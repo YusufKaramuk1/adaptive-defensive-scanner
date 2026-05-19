@@ -2,6 +2,7 @@ import argparse
 
 from scanner.nmap_scanner import run_scan
 from analyzer.risk_mapper import analyze
+from recommender.fix_generator import generate_fixes
 
 
 def parse_args():
@@ -41,6 +42,7 @@ def main():
     print(f"Criticality: {args.criticality}")
 
     findings = run_scan(args.target)
+
     analyzed = analyze(
         findings=findings,
         environment=args.environment,
@@ -49,10 +51,18 @@ def main():
 
     print("\n=== RESULTS ===")
 
+    if not analyzed:
+        print("No open ports found.")
+        return
+
     for item in analyzed:
+        fixes = generate_fixes(item)
+
         print(f"Port {item['port']} ({item['service']}) → Risk: {item['risk']}")
         print(f"Score: {item['final_score']}/5")
         print(f"Reason: {item['reason']}")
+        print(f"Quick Fix: {fixes['quick_fix']}")
+        print(f"Proper Fix: {fixes['proper_fix']}")
         print()
 
 

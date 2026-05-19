@@ -1,15 +1,24 @@
+import nmap
+
+
 def run_scan(target: str) -> list[dict]:
-    """
-    Fake scanner (MVP için)
-    Gerçek Nmap yerine test verisi döner.
-    """
+    print(f"[Scanner] Target {target} taranıyor (Nmap)...")
 
-    print(f"[Scanner] Target {target} taranıyor...")
+    scanner = nmap.PortScanner()
+    scanner.scan(hosts=target, arguments="-sV -T4")
 
-    findings = [
-        {"port": 22, "protocol": "tcp", "service": "ssh", "state": "open"},
-        {"port": 80, "protocol": "tcp", "service": "http", "state": "open"},
-        {"port": 445, "protocol": "tcp", "service": "smb", "state": "open"},
-    ]
+    findings = []
+
+    for host in scanner.all_hosts():
+        tcp = scanner[host].get("tcp", {})
+
+        for port, port_data in tcp.items():
+            if port_data.get("state") == "open":
+                findings.append({
+                    "port": port,
+                    "protocol": "tcp",
+                    "service": port_data.get("name", "unknown"),
+                    "state": port_data.get("state", "unknown")
+                })
 
     return findings
