@@ -58,7 +58,7 @@ def main():
 
     for item in analyzed:
         fixes = generate_fixes(item)
-        rules = generate_firewall_rules(item)
+        rules = generate_firewall_rules(item, args.environment)
 
         print(f"Port {item['port']} ({item['service']}) → Risk: {item['risk']}")
         print(f"Score: {item['final_score']}/5")
@@ -67,6 +67,7 @@ def main():
         print(f"Proper Fix: {fixes['proper_fix']}")
         print(f"UFW Rule: {rules['ufw']}")
         print(f"iptables Rule: {rules['iptables']}")
+        print(f"Rule Note: {rules['note']}")
         print()
 
 
