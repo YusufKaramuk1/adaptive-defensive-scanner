@@ -3,6 +3,7 @@ import argparse
 from scanner.nmap_scanner import run_scan
 from analyzer.risk_mapper import analyze
 from recommender.fix_generator import generate_fixes
+from rule_generator.firewall_rules import generate_firewall_rules
 
 
 def parse_args():
@@ -57,12 +58,15 @@ def main():
 
     for item in analyzed:
         fixes = generate_fixes(item)
+        rules = generate_firewall_rules(item)
 
         print(f"Port {item['port']} ({item['service']}) → Risk: {item['risk']}")
         print(f"Score: {item['final_score']}/5")
         print(f"Reason: {item['reason']}")
         print(f"Quick Fix: {fixes['quick_fix']}")
         print(f"Proper Fix: {fixes['proper_fix']}")
+        print(f"UFW Rule: {rules['ufw']}")
+        print(f"iptables Rule: {rules['iptables']}")
         print()
 
 
