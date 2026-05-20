@@ -1,7 +1,7 @@
 """
 ADS – JSON Exporter (reporter)
 Makine tarafından okunabilir JSON raporu üretir.
-SIEM entegrasyonu ve otomasyon için kullanılabilir.
+SIEM entegrasyonu, history/diff ve ileride API/dashboard için kullanılabilir.
 """
 
 import json
@@ -17,20 +17,23 @@ from models import ScanReport
 
 def generate_json_report(report: ScanReport) -> str:
     """
-    ScanReport nesnesini JSON olarak dile getirir ve dosyaya yazar.
-    Dönen değer: dosya yolu (str)
+    ScanReport nesnesini JSON olarak üretir ve dosyaya yazar.
+
+    Dönen değer:
+        str: oluşturulan JSON rapor dosyasının yolu
     """
     output_dir = Path("reports")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
     report_path = output_dir / f"ads_report_{timestamp}.json"
 
     payload = {
         "meta": {
             "tool":      "Adaptive Defensive Scanner (ADS)",
-            "version":   "2.0",
-            "generated": datetime.now().isoformat(),
+            "version":   "2.5",
+            "generated": now.isoformat(),
         },
         **report.to_dict(),
     }
@@ -40,5 +43,5 @@ def generate_json_report(report: ScanReport) -> str:
         encoding="utf-8",
     )
 
-    print(f"[Reporter] JSON raporu oluşturuldu: {report_path}")
+    print(f"[Reporter] JSON report created: {report_path}")
     return str(report_path)

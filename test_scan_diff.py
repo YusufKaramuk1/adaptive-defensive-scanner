@@ -1,111 +1,157 @@
-#!/usr/bin/env python3
 """
-Scan Diff Engine Test Scripti v2.0
-İki JSON raporu karşılaştırarak diff motorunun doğru çalıştığını kontrol eder.
-Host alanı artık JSON çıktılarında da var.
+ADS – Scan Diff Test
+
+This test verifies that analyzer/scan_diff.py correctly detects:
+- new ports
+- removed ports
+- increased risk
+- unchanged findings
+
+Run:
+    python test_scan_diff.py
 """
 
 import json
-import sys
 from pathlib import Path
-import tempfile
-
-sys.path.insert(0, str(Path(__file__).parent))
 
 from analyzer.scan_diff import compare_scans
 
-# ─── Test verileri ──────────────────────────────────────────
 
 PREVIOUS_REPORT = {
-    "meta": {"tool": "ADS", "version": "2.4"},
-    "context": {"target": "192.168.1.0/24", "environment": "external", "criticality": "high"},
-    "summary": {"total": 3, "high": 2, "medium": 0, "low": 1, "overall_risk": "HIGH", "overall_priority": "CRITICAL"},
+    "context": {
+        "target": "test-network",
+        "environment": "internal",
+        "criticality": "medium",
+        "scan_mode": "test",
+    },
+    "summary": {},
     "findings": [
         {
-            "host": "192.168.1.1", "port": 22, "protocol": "tcp", "service": "ssh", "state": "open",
-            "category": "remote_admin", "expected_exposure": "restricted_admin_only",
-            "base_score": 3, "final_score": 5, "risk": "high", "priority": "critical",
-            "cves": [{"cve_id": "CVE-2023-38408", "cvss_score": 9.8}],
-            "evidence": ["OpenSSH 8.2"], "reason": "SSH dışarıda"
+            "host": "192.168.1.1",
+            "port": 80,
+            "protocol": "tcp",
+            "service": "http",
+            "risk": "low",
+            "priority": "medium",
+            "cves": [],
         },
         {
-            "host": "192.168.1.1", "port": 80, "protocol": "tcp", "service": "http", "state": "open",
-            "category": "web", "expected_exposure": "public_allowed",
-            "base_score": 2, "final_score": 3, "risk": "medium", "priority": "medium",
-            "cves": [], "evidence": ["HTTP portu"], "reason": "Web sunucusu"
+            "host": "192.168.1.2",
+            "port": 445,
+            "protocol": "tcp",
+            "service": "microsoft-ds",
+            "risk": "high",
+            "priority": "high",
+            "cves": [],
         },
         {
-            "host": "192.168.1.2", "port": 445, "protocol": "tcp", "service": "microsoft-ds", "state": "open",
-            "category": "file_sharing", "expected_exposure": "internal_only",
-            "base_score": 5, "final_score": 5, "risk": "high", "priority": "critical",
-            "cves": [{"cve_id": "CVE-2017-0144", "cvss_score": 9.8}],
-            "evidence": ["SMBv1 açık"], "reason": "SMB dışarıda"
+            "host": "192.168.1.4",
+            "port": 22,
+            "protocol": "tcp",
+            "service": "ssh",
+            "risk": "medium",
+            "priority": "medium",
+            "cves": [],
         },
-    ]
+    ],
 }
+
 
 CURRENT_REPORT = {
-    "meta": {"tool": "ADS", "version": "2.4"},
-    "context": {"target": "192.168.1.0/24", "environment": "external", "criticality": "high"},
-    "summary": {"total": 3, "high": 2, "medium": 0, "low": 1, "overall_risk": "HIGH", "overall_priority": "CRITICAL"},
+    "context": {
+        "target": "test-network",
+        "environment": "external",
+        "criticality": "high",
+        "scan_mode": "test",
+    },
+    "summary": {},
     "findings": [
-        # Aynı SSH (unchanged)
         {
-            "host": "192.168.1.1", "port": 22, "protocol": "tcp", "service": "ssh", "state": "open",
-            "category": "remote_admin", "expected_exposure": "restricted_admin_only",
-            "base_score": 3, "final_score": 5, "risk": "high", "priority": "critical",
-            "cves": [{"cve_id": "CVE-2023-38408", "cvss_score": 9.8}],
-            "evidence": ["OpenSSH 8.2"], "reason": "SSH dışarıda"
+            "host": "192.168.1.1",
+            "port": 80,
+            "protocol": "tcp",
+            "service": "http",
+            "risk": "medium",
+            "priority": "high",
+            "cves": [],
         },
-        # HTTP riski arttı (medium → high) ve host aynı
         {
-            "host": "192.168.1.1", "port": 80, "protocol": "tcp", "service": "http", "state": "open",
-            "category": "web", "expected_exposure": "public_allowed",
-            "base_score": 2, "final_score": 5, "risk": "high", "priority": "high",
-            "cves": [{"cve_id": "CVE-2021-41773", "cvss_score": 7.5}],
-            "evidence": ["Apache 2.4.49", "TLS yok"], "reason": "Web sunucusu güncel değil"
+            "host": "192.168.1.3",
+            "port": 3389,
+            "protocol": "tcp",
+            "service": "ms-wbt-server",
+            "risk": "high",
+            "priority": "critical",
+            "cves": [],
         },
-        # SMB kapandı (removed)
-        # Yeni RDP açıldı (new) farklı hostta
         {
-            "host": "192.168.1.3", "port": 3389, "protocol": "tcp", "service": "ms-wbt-server", "state": "open",
-            "category": "remote_admin", "expected_exposure": "restricted_admin_only",
-            "base_score": 5, "final_score": 5, "risk": "high", "priority": "critical",
-            "cves": [{"cve_id": "CVE-2019-0708", "cvss_score": 9.8}],
-            "evidence": ["RDP dışarıda"], "reason": "RDP dışarıda"
+            "host": "192.168.1.4",
+            "port": 22,
+            "protocol": "tcp",
+            "service": "ssh",
+            "risk": "medium",
+            "priority": "medium",
+            "cves": [],
         },
-    ]
+    ],
 }
 
 
-def main():
-    with tempfile.TemporaryDirectory() as tmp:
-        prev_path = Path(tmp) / "previous.json"
-        curr_path = Path(tmp) / "current.json"
+def write_report(path: Path, data: dict) -> None:
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-        with open(prev_path, "w") as f: json.dump(PREVIOUS_REPORT, f)
-        with open(curr_path, "w") as f: json.dump(CURRENT_REPORT, f)
 
-        diff = compare_scans(str(prev_path), str(curr_path))
+def test_scan_diff():
+    test_dir = Path("test_data")
+    previous_path = test_dir / "diff_previous.json"
+    current_path = test_dir / "diff_current.json"
 
-        print("Diff Test Sonuçları")
-        print("=" * 55)
-        print(f"Yeni port sayısı: {diff.summary['new_ports']} (beklenen: 1)")
-        print(
-            f"   {'✅' if diff.summary['new_ports'] == 1 else '❌'} 3389/RDP eklendi mi? {any(c.port == 3389 and c.change_type == 'new' for c in diff.changes)}")
-        print(f"Kapanan port sayısı: {diff.summary['removed_ports']} (beklenen: 1)")
-        print(
-            f"   {'✅' if diff.summary['removed_ports'] == 1 else '❌'} 445/SMB kapandı mı? {any(c.port == 445 and c.change_type == 'removed' for c in diff.changes)}")
-        print(f"Risk artan: {diff.summary['risk_increased']} (beklenen: 1)")
-        print(
-            f"   {'✅' if diff.summary['risk_increased'] == 1 else '❌'} HTTP riski arttı mı? {any(c.port == 80 and c.change_type == 'risk_increased' for c in diff.changes)}")
-        print(f"Değişmeyen: {diff.summary['unchanged']} (beklenen: 1)")
+    write_report(previous_path, PREVIOUS_REPORT)
+    write_report(current_path, CURRENT_REPORT)
 
-        # Host kontrolü
-        new_items = [c for c in diff.changes if c.change_type == 'new']
-        if new_items:
-            print(f"\nYeni bulgu host: {new_items[0].port}/{new_items[0].protocol} @ {new_items[0].details}")
+    diff_report = compare_scans(str(previous_path), str(current_path))
+    summary = diff_report.summary
+
+    print("Scan Diff Test Results")
+    print("=" * 55)
+
+    print(f"New ports: {summary.get('new_ports')} (expected: 1)")
+    assert summary.get("new_ports") == 1
+
+    new_items = [c for c in diff_report.changes if c.change_type == "new"]
+    added_rdp = any(c.host == "192.168.1.3" and c.port == 3389 for c in new_items)
+    print(f"   ✅ 3389/RDP detected as new? {added_rdp}")
+    assert added_rdp is True
+
+    print(f"Removed ports: {summary.get('removed_ports')} (expected: 1)")
+    assert summary.get("removed_ports") == 1
+
+    removed_items = [c for c in diff_report.changes if c.change_type == "removed"]
+    removed_smb = any(c.host == "192.168.1.2" and c.port == 445 for c in removed_items)
+    print(f"   ✅ 445/SMB detected as removed? {removed_smb}")
+    assert removed_smb is True
+
+    print(f"Risk increased: {summary.get('risk_increased')} (expected: 1)")
+    assert summary.get("risk_increased") == 1
+
+    risk_increased_items = [c for c in diff_report.changes if c.change_type == "risk_increased"]
+    http_risk_increased = any(c.host == "192.168.1.1" and c.port == 80 for c in risk_increased_items)
+    print(f"   ✅ HTTP risk increase detected? {http_risk_increased}")
+    assert http_risk_increased is True
+
+    print(f"Unchanged: {summary.get('unchanged')} (expected: 1)")
+    assert summary.get("unchanged") == 1
+
+    new_finding = new_items[0]
+    print(
+        f"\nNew finding host: {new_finding.port}/{new_finding.protocol} @ "
+        f"{new_finding.host} | Service: {new_finding.service}, "
+        f"Risk: {new_finding.new_risk}, Priority: {new_finding.new_priority}"
+    )
+
+    print("\n✅ Scan diff test passed.")
 
 
 if __name__ == "__main__":
-    main()
+    test_scan_diff()

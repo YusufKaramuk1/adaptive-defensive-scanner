@@ -1,34 +1,36 @@
 """
 ADS – CVE Enrichment (knowledge_base) v2.0
-Servis, port VE versiyon bilgisine dayalı, yüksek doğruluklu CVE eşleştirmesi yapar.
-Yanlış pozitifleri azaltmak için versiyon ve ürün eşleştirmesi zorunludur.
+Servis, port, ürün VE versiyon bilgisine dayalı, yüksek doğruluklu CVE eşleştirme.
+Semantik versiyon karşılaştırma ve güven skoru ile false positive'leri azaltır.
 """
 
 import re
 from models import CVEInfo
+from utils.helpers import parse_version, version_in_range
+
 
 # ─────────────────────────────────────────────────────────────
-# Version-Aware CVE Veritabanı
-# Artık her CVE, hangi ürün ve versiyon aralığında geçerli olduğunu bilir.
+# Versiyon-tabanlı CVE Veritabanı
+# Her CVE artık: ürün adı, versiyon kısıtı, CVSS içerir.
 # ─────────────────────────────────────────────────────────────
 _VERSIONED_CVE_DB: list[dict] = [
     # --- SMB ---
     {
         "cve_id": "CVE-2017-0144",
-        "description": "EternalBlue — SMBv1 uzaktan kod çalıştırma açığı.",
+        "description": "EternalBlue — SMBv1 uzaktan kod çalıştırma.",
         "cvss_score": 9.8,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2017-0144",
-        "product_regex": r"^smb$|^microsoft-ds$|^windows$",
-        "version_range": ("0", "1.0"),
+        "product_regex": r"^(smb|microsoft-ds|windows)$",
+        "version_constraint": "<2.0",    # SMBv1 etkilenir
         "affected_service": "smb",
     },
     {
         "cve_id": "CVE-2020-0796",
-        "description": "SMBGhost — SMBv3 sıkıştırma işleyicisinde buffer overflow (wormable RCE).",
+        "description": "SMBGhost — SMBv3 sıkıştırma açığı (wormable RCE).",
         "cvss_score": 10.0,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-0796",
-        "product_regex": r"^smb$|^microsoft-ds$|^windows$",
-        "version_range": ("3.0", "3.1.1"),
+        "product_regex": r"^(smb|microsoft-ds|windows)$",
+        "version_constraint": ">=3.0,<=3.1.1",
         "affected_service": "smb",
     },
     # --- OpenSSH ---
@@ -38,7 +40,7 @@ _VERSIONED_CVE_DB: list[dict] = [
         "cvss_score": 9.8,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-38408",
         "product_regex": r"^openssh$",
-        "version_regex": r"^8\.[2-6]$",  # Örnek, gerçek aralık daha geniş olabilir
+        "version_constraint": ">=8.0,<9.4",
         "affected_service": "ssh",
     },
     # --- Apache HTTPD ---
@@ -47,8 +49,8 @@ _VERSIONED_CVE_DB: list[dict] = [
         "description": "Apache HTTP Server path traversal ve RCE (2.4.49).",
         "cvss_score": 7.5,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773",
-        "product_regex": r"^apache$|^httpd$|^apache http server$",
-        "version_regex": r"^2\.4\.49$",
+        "product_regex": r"^(apache|httpd|apache http server)$",
+        "version_constraint": "==2.4.49",
         "affected_service": "http",
     },
     {
@@ -56,9 +58,19 @@ _VERSIONED_CVE_DB: list[dict] = [
         "description": "Apache HTTP Server path traversal (2.4.49-2.4.50).",
         "cvss_score": 9.8,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-42013",
-        "product_regex": r"^apache$|^httpd$|^apache http server$",
-        "version_regex": r"^2\.4\.(49|50)$",
+        "product_regex": r"^(apache|httpd|apache http server)$",
+        "version_constraint": ">=2.4.49,<=2.4.50",
         "affected_service": "http",
+    },
+    # --- vsftpd ---
+    {
+        "cve_id": "CVE-2011-2523",
+        "description": "vsftpd 2.3.4 backdoor — uzaktan shell.",
+        "cvss_score": 10.0,
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-2523",
+        "product_regex": r"^vsftpd$",
+        "version_constraint": "==2.3.4",
+        "affected_service": "ftp",
     },
     # --- Redis ---
     {
@@ -67,51 +79,43 @@ _VERSIONED_CVE_DB: list[dict] = [
         "cvss_score": 10.0,
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-0543",
         "product_regex": r"^redis$",
-        "version_regex": r"^.*$",  # Tüm versiyonlar etkilenmez, Debian'a özel ama flag için
+        "version_constraint": None,  # Debian spesifik, version check yapma
         "affected_service": "redis",
     },
     # --- ProFTPD ---
     {
-        "cve_id": "CVE-2011-2523",
-        "description": "vsftpd 2.3.4 backdoor — uzaktan shell.",
-        "cvss_score": 10.0,
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-2523",
-        "product_regex": r"^vsftpd$",
-        "version_regex": r"^2\.3\.4$",
+        "cve_id": "CVE-2015-3306",
+        "description": "ProFTPD 1.3.5 mod_copy RCE.",
+        "cvss_score": 9.8,
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2015-3306",
+        "product_regex": r"^proftpd$",
+        "version_constraint": "==1.3.5",
         "affected_service": "ftp",
     },
 ]
 
-# Port tabanlı fallback veritabanı (versiyon bilgisi YOKSA kullanılır, düşük güvenilirlik)
+# Port tabanlı fallback veritabanı (versiyon YOKSA kullanılır, düşük güvenilirlik)
 _PORT_BASED_CVE_DB: dict[int, list[CVEInfo]] = {
     445: [
-        CVEInfo(cve_id="CVE-2017-0144", description="EternalBlue (port açık, versiyon bilinmiyor)", cvss_score=9.8, url="...", match_type="service"),
+        CVEInfo(cve_id="CVE-2017-0144", description="EternalBlue (port açık, versiyon bilinmiyor)", cvss_score=9.8, url="https://nvd.nist.gov/vuln/detail/CVE-2017-0144", match_type="port"),
     ],
     3389: [
-        CVEInfo(cve_id="CVE-2019-0708", description="BlueKeep (port açık, versiyon bilinmiyor)", cvss_score=9.8, url="...", match_type="service"),
+        CVEInfo(cve_id="CVE-2019-0708", description="BlueKeep (port açık, versiyon bilinmiyor)", cvss_score=9.8, url="https://nvd.nist.gov/vuln/detail/CVE-2019-0708", match_type="port"),
     ],
 }
 
-def _match_version(version: str, constraint: str | tuple) -> bool:
-    """Basit bir versiyon eşleştirici. Regex veya tuple aralık olabilir."""
-    if not version:
-        return False
-    if isinstance(constraint, tuple):
-        # tuple: (min, max) string karşılaştırması
-        return constraint[0] <= version <= constraint[1]
-    elif isinstance(constraint, str):
-        return bool(re.search(constraint, version, re.IGNORECASE))
-    return False
 
-def get_cves(port: int, service: str, version: str = "", product: str = "") -> list[CVEInfo]:
+def get_cves(port: int, service: str, version: str = "", product: str = "") -> tuple[list[CVEInfo], str]:
     """
-    Bir servis için bilinen CVE'leri döner.
-    Öncelik: Versiyon/Ürün eşleşmesi (YÜKSEK GÜVEN) > Port eşleşmesi (DÜŞÜK GÜVEN)
+    Bir servis için bilinen CVE'leri döner ve eşleşme tipini belirtir.
+
+    Returns:
+        (cve_listesi, match_confidence: "high"/"medium"/"low")
     """
     matched_cves = []
     service_lower = service.lower()
     product_lower = product.lower()
-    version_str = version.strip()
+    clean_version = parse_version(version) if version else ""
 
     # 1. Aşama: Versiyon/Ürün bazlı yüksek doğruluklu eşleştirme
     for cve_entry in _VERSIONED_CVE_DB:
@@ -125,30 +129,30 @@ def get_cves(port: int, service: str, version: str = "", product: str = "") -> l
                not re.search(cve_entry["product_regex"], service_lower, re.IGNORECASE):
                 continue
 
-        # Versiyon kontrolü
-        if "version_regex" in cve_entry:
-            if not re.search(cve_entry["version_regex"], version_str, re.IGNORECASE):
+        # Versiyon kısıtı kontrolü
+        if cve_entry.get("version_constraint"):
+            if not clean_version:
+                continue  # Versiyon yoksa version-based CVE verme
+            if not version_in_range(clean_version, cve_entry["version_constraint"]):
                 continue
-        elif "version_range" in cve_entry:
-            if not _match_version(version_str, cve_entry["version_range"]):
-                continue
-        else:
-            # Versiyon kontrolü yoksa, servis ve ürün eşleşmesi yeterli
-            pass
 
         matched_cves.append(CVEInfo(
             cve_id=cve_entry["cve_id"],
             description=cve_entry["description"],
             cvss_score=cve_entry["cvss_score"],
             url=cve_entry["url"],
-            match_type="version" if version_str else "product"
+            match_type="version" if clean_version else "product"
         ))
 
-    # 2. Aşama: Port tabanlı düşük güvenilirlikli fallback (versiyon YOKSA)
-    if not matched_cves and port in _PORT_BASED_CVE_DB:
-        matched_cves.extend(_PORT_BASED_CVE_DB[port])
+    if matched_cves:
+        return matched_cves, "high"
 
-    return matched_cves
+    # 2. Aşama: Port tabanlı düşük güvenilirlikli fallback (versiyon YOKSA)
+    if port in _PORT_BASED_CVE_DB:
+        return _PORT_BASED_CVE_DB[port], "low"
+
+    return [], "none"
+
 
 def get_max_cvss(cves: list[CVEInfo]) -> float:
     """CVE listesindeki en yüksek CVSS skorunu döner."""

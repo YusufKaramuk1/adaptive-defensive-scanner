@@ -1,36 +1,47 @@
-#!/usr/bin/env python3
 """
-Subnet Expand Test
-Subnet'ten IP listesi oluşturmayı doğrular.
+ADS – Subnet Expansion Test
+
+This test verifies that utils/helpers.py correctly validates and expands
+small CIDR subnet inputs.
+
+Run:
+    python test_subnet_expand.py
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from utils.helpers import expand_subnet
+from utils.helpers import is_valid_subnet, expand_subnet
 
 
-def test_subnet():
-    # 1. /30 subnet (4 adres, 2 kullanılabilir host)
-    ips = expand_subnet("192.168.1.0/30")
-    expected = ["192.168.1.1", "192.168.1.2"]
-    assert ips == expected, f"/30 başarısız: {ips}"
-    print("✅ /30 testi geçti")
+def test_subnet_expand():
+    subnet_30 = "192.168.1.0/30"
+    hosts_30 = expand_subnet(subnet_30)
 
-    # 2. /29 subnet (8 adres, 6 host)
-    ips = expand_subnet("10.0.0.0/29")
-    assert len(ips) == 6, f"/29 host sayısı yanlış: {len(ips)}"
-    assert "10.0.0.0" not in ips and "10.0.0.7" not in ips
-    print("✅ /29 testi geçti")
+    assert is_valid_subnet(subnet_30) is True
+    assert hosts_30 == ["192.168.1.1", "192.168.1.2"]
 
-    # 3. Geçersiz subnet
-    ips = expand_subnet("invalid")
-    assert ips == [], f"Geçersiz subnet boş dönmeli: {ips}"
-    print("✅ Geçersiz subnet testi geçti")
+    print("✅ /30 subnet test passed.")
 
-    print("\n✅ Tüm testler başarılı.")
+    subnet_29 = "192.168.1.0/29"
+    hosts_29 = expand_subnet(subnet_29)
+
+    assert is_valid_subnet(subnet_29) is True
+    assert len(hosts_29) == 6
+    assert hosts_29[0] == "192.168.1.1"
+    assert hosts_29[-1] == "192.168.1.6"
+
+    print("✅ /29 subnet test passed.")
+
+    invalid_subnet = "not-a-subnet"
+
+    assert is_valid_subnet(invalid_subnet) is False
+
+    invalid_result = expand_subnet(invalid_subnet)
+
+    assert invalid_result == []
+
+    print("✅ Invalid subnet test passed.")
+
+    print("\n✅ All subnet expansion tests passed.")
 
 
 if __name__ == "__main__":
-    test_subnet()
+    test_subnet_expand()

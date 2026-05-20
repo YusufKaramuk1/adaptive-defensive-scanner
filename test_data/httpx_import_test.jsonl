@@ -1,0 +1,5 @@
+{"url":"https://example.com","host":"example.com","port":443,"scheme":"https","status-code":200,"title":"Example Domain","webserver":"nginx/1.18.0","tech":["Nginx"]}
+{"url":"http://admin.example.com:8080","status_code":200,"title":"Admin Login","webserver":"Apache/2.4.49","tech":["Apache HTTP Server"]}
+{"input":"dev.example.com","scheme":"http","port":80,"status-code":403,"title":"Forbidden","tech":["IIS"]}
+{"url":"https://bad-json.example.com","port":443
+{"url":"https://cloud.example.com","webserver":"cloudflare","status-code":200}

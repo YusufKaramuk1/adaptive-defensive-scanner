@@ -1,1 +1,2 @@
 python-nmap
+packaging>=23.0

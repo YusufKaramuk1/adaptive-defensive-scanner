@@ -1,117 +1,188 @@
-#!/usr/bin/env python3
 """
-Priority Engine Test Scripti v2.2
-Farklı senaryolarda doğru öncelik seviyesini üretip üretmediğini kontrol eder.
-Host alanı artık her bulguda zorunlu.
+ADS – Priority Engine Test
+
+This test verifies that recommender/priority_engine.py assigns
+the expected priority levels for representative findings.
+
+Run:
+    python test_priority.py
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from models import AnalyzedFinding, ConfidenceLevel, RiskLevel, PriorityLevel
+from models import AnalyzedFinding, RiskLevel, ConfidenceLevel, PriorityLevel
 from recommender.priority_engine import calculate_priority
 
 
-def test_case(name: str, finding: AnalyzedFinding, env: str, crit: str, expected: PriorityLevel):
-    result = calculate_priority(finding, env, crit)
+def make_finding(
+    service: str,
+    port: int,
+    risk: RiskLevel,
+    confidence: ConfidenceLevel,
+    final_score: int,
+    category: str,
+    expected_exposure: str,
+    cves: list | None = None,
+) -> AnalyzedFinding:
+    return AnalyzedFinding(
+        host="127.0.0.1",
+        port=port,
+        service=service,
+        protocol="tcp",
+        risk=risk,
+        confidence=confidence,
+        final_score=final_score,
+        category=category,
+        expected_exposure=expected_exposure,
+        cves=cves or [],
+    )
+
+
+def run_case(
+    label: str,
+    finding: AnalyzedFinding,
+    environment: str,
+    criticality: str,
+    expected: PriorityLevel,
+) -> None:
+    result = calculate_priority(finding, environment, criticality)
+
     status = "✅" if result == expected else "❌"
-    print(f"{status} {name:40s} → {result.value.upper():10s} (beklenen: {expected.value.upper()})")
-    if result != expected:
-        print(f"   KONTROL ET: {result} != {expected}")
+
+    print(f"{status} {label:<55} → {result.value.upper():<10} (expected: {expected.value.upper()})")
+
+    assert result == expected
 
 
-# ─── Test Senaryoları ────────────────────────────────────────
+def test_priority_engine():
+    high_conf_cve = [
+        {
+            "cve_id": "CVE-TEST-0001",
+            "description": "Test CVE",
+            "cvss_score": 9.8,
+            "url": "https://example.com",
+            "match_type": "version",
+        }
+    ]
 
-# 1. Dış ortamda SMB + CVE → CRITICAL
-finding_smb = AnalyzedFinding(
-    host="192.168.1.10",
-    port=445, service="microsoft-ds", protocol="tcp", state="open",
-    category="file_sharing", expected_exposure="internal_only",
-    base_score=5, final_score=5, risk=RiskLevel.HIGH,
-    confidence=ConfidenceLevel.HIGH,
-    cves=[{"cve_id": "CVE-2020-0796", "description": "SMBGhost", "cvss_score": 10.0, "url": "", "match_type": "version"}],
-    evidence=["SMBv3 açık", "Auth yok"],
-    reason="SMB dışarıda"
-)
-test_case("Dış ortam SMB + CVE", finding_smb, "external", "high", PriorityLevel.CRITICAL)
+    cases = [
+        (
+            "External SMB + version CVE (HIGH confidence)",
+            make_finding(
+                service="microsoft-ds",
+                port=445,
+                risk=RiskLevel.HIGH,
+                confidence=ConfidenceLevel.HIGH,
+                final_score=5,
+                category="file_sharing",
+                expected_exposure="internal_only",
+                cves=high_conf_cve,
+            ),
+            "external",
+            "high",
+            PriorityLevel.CRITICAL,
+        ),
+        (
+            "Internal SSH + version CVE (HIGH confidence)",
+            make_finding(
+                service="ssh",
+                port=22,
+                risk=RiskLevel.HIGH,
+                confidence=ConfidenceLevel.HIGH,
+                final_score=5,
+                category="remote_admin",
+                expected_exposure="restricted_admin_only",
+                cves=high_conf_cve,
+            ),
+            "internal",
+            "medium",
+            PriorityLevel.CRITICAL,
+        ),
+        (
+            "Internal web, low confidence, port-only",
+            make_finding(
+                service="http",
+                port=80,
+                risk=RiskLevel.MEDIUM,
+                confidence=ConfidenceLevel.LOW,
+                final_score=3,
+                category="web",
+                expected_exposure="public_allowed",
+                cves=[],
+            ),
+            "internal",
+            "medium",
+            PriorityLevel.MEDIUM,
+        ),
+        (
+            "External Telnet (HIGH confidence)",
+            make_finding(
+                service="telnet",
+                port=23,
+                risk=RiskLevel.HIGH,
+                confidence=ConfidenceLevel.HIGH,
+                final_score=5,
+                category="legacy_remote",
+                expected_exposure="should_not_be_exposed",
+                cves=[],
+            ),
+            "external",
+            "high",
+            PriorityLevel.CRITICAL,
+        ),
+        (
+            "External Redis + version CVE (HIGH confidence)",
+            make_finding(
+                service="redis",
+                port=6379,
+                risk=RiskLevel.HIGH,
+                confidence=ConfidenceLevel.HIGH,
+                final_score=5,
+                category="database",
+                expected_exposure="should_not_be_exposed",
+                cves=high_conf_cve,
+            ),
+            "external",
+            "medium",
+            PriorityLevel.CRITICAL,
+        ),
+        (
+            "Internal dev port, low risk",
+            make_finding(
+                service="unknown",
+                port=3000,
+                risk=RiskLevel.LOW,
+                confidence=ConfidenceLevel.LOW,
+                final_score=2,
+                category="unknown",
+                expected_exposure="internal_or_dev",
+                cves=[],
+            ),
+            "internal",
+            "low",
+            PriorityLevel.LOW,
+        ),
+        (
+            "Internal HTTPS + version CVE (HIGH confidence, high criticality)",
+            make_finding(
+                service="https",
+                port=443,
+                risk=RiskLevel.HIGH,
+                confidence=ConfidenceLevel.HIGH,
+                final_score=5,
+                category="web",
+                expected_exposure="public_allowed",
+                cves=high_conf_cve,
+            ),
+            "internal",
+            "high",
+            PriorityLevel.CRITICAL,
+        ),
+    ]
 
-# 2. İç ortamda SSH + kritik CVE → CRITICAL
-finding_ssh = AnalyzedFinding(
-    host="10.0.0.5",
-    port=22, service="ssh", protocol="tcp", state="open",
-    category="remote_admin", expected_exposure="restricted_admin_only",
-    base_score=3, final_score=3, risk=RiskLevel.MEDIUM,
-    confidence=ConfidenceLevel.MEDIUM,
-    cves=[{"cve_id": "CVE-2023-38408", "description": "OpenSSH RCE", "cvss_score": 9.8, "url": "", "match_type": "version"}],
-    evidence=["OpenSSH 8.2"],
-    reason="SSH iç ağda"
-)
-test_case("İç ortam SSH + kritik CVE", finding_ssh, "internal", "medium", PriorityLevel.CRITICAL)
+    for label, finding, environment, criticality, expected in cases:
+        run_case(label, finding, environment, criticality, expected)
 
-# 3. Web sunucusu iç ortamda güven düşük → MEDIUM
-finding_web = AnalyzedFinding(
-    host="10.0.0.1",
-    port=80, service="http", protocol="tcp", state="open",
-    category="web", expected_exposure="public_allowed",
-    base_score=2, final_score=3, risk=RiskLevel.MEDIUM,
-    confidence=ConfidenceLevel.LOW,
-    cves=[],
-    evidence=["HTTP portu"],
-    reason="Web sunucusu"
-)
-test_case("İç ortam web düşük güven", finding_web, "internal", "low", PriorityLevel.MEDIUM)
+    print("\n✅ Priority engine test passed.")
 
-# 4. Telnet dış ortam → CRITICAL
-finding_telnet = AnalyzedFinding(
-    host="203.0.113.1",
-    port=23, service="telnet", protocol="tcp", state="open",
-    category="legacy_remote", expected_exposure="should_not_be_exposed",
-    base_score=5, final_score=5, risk=RiskLevel.HIGH,
-    confidence=ConfidenceLevel.HIGH,
-    cves=[],
-    evidence=["Cleartext protokol"],
-    reason="Telnet dışarıda"
-)
-test_case("Dış ortam telnet", finding_telnet, "external", "high", PriorityLevel.CRITICAL)
 
-# 5. Dış ortamda Redis + yüksek CVE → CRITICAL
-finding_redis = AnalyzedFinding(
-    host="203.0.113.5",
-    port=6379, service="redis", protocol="tcp", state="open",
-    category="database", expected_exposure="should_not_be_exposed",
-    base_score=5, final_score=5, risk=RiskLevel.HIGH,
-    confidence=ConfidenceLevel.HIGH,
-    cves=[{"cve_id": "CVE-2022-0543", "description": "Redis sandbox escape", "cvss_score": 10.0, "url": "", "match_type": "version"}],
-    evidence=["Auth yok", "Dış erişime açık"],
-    reason="Redis dışarıda"
-)
-test_case("Dış ortam Redis + CVE", finding_redis, "external", "high", PriorityLevel.CRITICAL)
-
-# 6. İç ortamda düşük risk + düşük güven → LOW
-finding_low = AnalyzedFinding(
-    host="10.0.0.55",
-    port=8080, service="http-alt", protocol="tcp", state="open",
-    category="web", expected_exposure="internal_or_dev",
-    base_score=2, final_score=2, risk=RiskLevel.LOW,
-    confidence=ConfidenceLevel.LOW,
-    cves=[],
-    evidence=["Alternatif HTTP"],
-    reason="Geliştirme portu"
-)
-test_case("İç ortam dev portu düşük risk", finding_low, "internal", "low", PriorityLevel.LOW)
-
-# 7. İç ortam HTTPS + CVE yüksek kritik → CRITICAL
-finding_web_critical = AnalyzedFinding(
-    host="10.0.0.10",
-    port=443, service="https", protocol="tcp", state="open",
-    category="web", expected_exposure="public_allowed",
-    base_score=3, final_score=3, risk=RiskLevel.MEDIUM,
-    confidence=ConfidenceLevel.MEDIUM,
-    cves=[{"cve_id": "CVE-2021-41773", "description": "Apache path traversal", "cvss_score": 7.5, "url": "", "match_type": "version"}],
-    evidence=["Apache 2.4.49", "TLS aktif"],
-    reason="HTTPS yüksek kritik asset"
-)
-test_case("İç ortam HTTPS + CVE yüksek kritik", finding_web_critical, "internal", "high", PriorityLevel.CRITICAL)
-
-print("\n✅ Test tamamlandı.")
+if __name__ == "__main__":
+    test_priority_engine()

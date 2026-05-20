@@ -1,0 +1,38 @@
+{
+  "context": {
+    "target": "test-network",
+    "environment": "external",
+    "criticality": "high",
+    "scan_mode": "test"
+  },
+  "summary": {},
+  "findings": [
+    {
+      "host": "192.168.1.1",
+      "port": 80,
+      "protocol": "tcp",
+      "service": "http",
+      "risk": "medium",
+      "priority": "high",
+      "cves": []
+    },
+    {
+      "host": "192.168.1.3",
+      "port": 3389,
+      "protocol": "tcp",
+      "service": "ms-wbt-server",
+      "risk": "high",
+      "priority": "critical",
+      "cves": []
+    },
+    {
+      "host": "192.168.1.4",
+      "port": 22,
+      "protocol": "tcp",
+      "service": "ssh",
+      "risk": "medium",
+      "priority": "medium",
+      "cves": []
+    }
+  ]
+}
