@@ -605,10 +605,26 @@ def handle_security_import(args: argparse.Namespace, scan_mode: str, source_tool
 
     print_security_summary(ctx, analyzed_security_findings)
 
-    json_path = generate_security_json_report(ctx, analyzed_security_findings)
+    # Route through unified ScanReport so the standard HTML + JSON reporters
+    # render security findings alongside any port findings.
+    report = ScanReport(
+        context=ctx,
+        findings=[],
+        security_findings=analyzed_security_findings,
+    )
 
+    json_path = generate_json_report(report)
     if args.json:
-        print(f"[ADS] Security JSON report: {json_path}")
+        print(f"[ADS] JSON report           : {json_path}")
+
+    if not args.no_html:
+        html_path = generate_html_report(report)
+        print(f"[ADS] HTML report           : {html_path}")
+
+    # Legacy standalone security JSON, kept for backward compatibility.
+    legacy_security_path = generate_security_json_report(ctx, analyzed_security_findings)
+    if args.json:
+        print(f"[ADS] Security JSON (legacy): {legacy_security_path}")
 
     save_latest_scan(json_path)
 

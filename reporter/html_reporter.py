@@ -54,6 +54,15 @@ _PRIORITY_ICON = {
     "low": "●",
 }
 
+_SEVERITY_COLOR = {
+    "critical": "#ef4444",
+    "high": "#f59e0b",
+    "medium": "#3b82f6",
+    "low": "#22c55e",
+    "info": "#94a3b8",
+    "unknown": "#94a3b8",
+}
+
 
 def _safe(value) -> str:
     if value is None:
@@ -298,37 +307,281 @@ def _finding_row(item) -> str:
     """
 
 
-def _top_risks_section(report: ScanReport) -> str:
-    cards = ""
+def _security_severity_badge(severity: str) -> str:
+    color = _SEVERITY_COLOR.get(severity, "#94a3b8")
+    return (
+        f'<span class="severity-pill" style="background:{color}22;color:{color};border-color:{color}">'
+        f'{_safe(severity.upper())}</span>'
+    )
 
-    for i, item in enumerate(report.top_risks[:5], 1):
-        risk = item.risk.value if hasattr(item.risk, "value") else str(item.risk)
-        priority = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
-        color = _PRIORITY_COLOR.get(priority, _RISK_COLOR.get(risk, "#94a3b8"))
 
-        metadata = getattr(item, "metadata", {}) or {}
-        title = metadata.get("title")
-        url = metadata.get("url")
+def _security_cve_links(cve_ids: list) -> str:
+    if not cve_ids:
+        return '<span class="muted">—</span>'
 
-        subline = f"{_safe(item.category)} · {_priority_badge(priority)}"
+    badges = []
 
-        if title:
-            subline += f'<div class="trc-web-title">Title: {_safe(title)}</div>'
-        elif url:
-            subline += f'<div class="trc-web-title">URL: {_safe(url)}</div>'
+    for cve in cve_ids[:5]:
+        url = f"https://nvd.nist.gov/vuln/detail/{cve}"
+        badges.append(
+            f'<a class="cve-badge" href="{_safe(url)}" target="_blank" rel="noopener" '
+            f'style="border-color:#ef4444;color:#ef4444">{_safe(cve)}</a>'
+        )
 
-        cards += f"""
-        <div class="top-risk-card" style="border-left-color:{color}">
-            <div class="trc-rank">#{i}</div>
+    return " ".join(badges)
 
-            <div class="trc-info">
-                <div class="trc-title">{_safe(item.host)} — Port {_safe(item.port)} ({_safe(item.service)})</div>
-                <div class="trc-cat">{subline}</div>
-            </div>
 
-            <div class="trc-score" style="color:{color}">{_safe(item.final_score)}/5</div>
+def _security_references_block(references: list) -> str:
+    if not references:
+        return ""
+
+    items = "".join(
+        f'<li><a href="{_safe(ref)}" target="_blank" rel="noopener">{_safe(ref)}</a></li>'
+        for ref in references[:6]
+    )
+
+    return f'<ul class="ref-list">{items}</ul>'
+
+
+def _security_details_block(item) -> str:
+    evidence = getattr(item, "evidence", []) or []
+    references = getattr(item, "references", []) or []
+    extracted = getattr(item, "extracted_results", []) or []
+    quick_fix = getattr(item, "quick_fix", "") or "—"
+    proper_fix = getattr(item, "proper_fix", "") or "—"
+    matcher_name = getattr(item, "matcher_name", "") or ""
+    curl_command = getattr(item, "curl_command", "") or ""
+    description = getattr(item, "description", "") or ""
+    tags = getattr(item, "tags", []) or []
+
+    refs_block = _security_references_block(references)
+    refs_section = ""
+
+    if refs_block:
+        refs_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">References</div>
+            {refs_block}
         </div>
         """
+
+    extracted_section = ""
+
+    if extracted:
+        items_html = "".join(f'<code class="rule-code">{_safe(x)}</code>' for x in extracted[:5])
+        extracted_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">Extracted Results</div>
+            {items_html}
+        </div>
+        """
+
+    curl_section = ""
+
+    if curl_command:
+        curl_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">Reproduction</div>
+            <code class="rule-code">{_safe(curl_command)}</code>
+        </div>
+        """
+
+    matcher_section = ""
+
+    if matcher_name:
+        matcher_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">Matcher</div>
+            <code class="rule-code">{_safe(matcher_name)}</code>
+        </div>
+        """
+
+    tags_section = ""
+
+    if tags:
+        tag_chips = "".join(
+            f'<span class="evidence-tag">{_safe(t)}</span>' for t in tags[:10]
+        )
+        tags_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">Tags</div>
+            <div class="evidence-list">{tag_chips}</div>
+        </div>
+        """
+
+    desc_section = ""
+
+    if description:
+        desc_section = f"""
+        <div class="detail-card">
+            <div class="detail-title">Description</div>
+            <div class="detail-text">{_safe(description)}</div>
+        </div>
+        """
+
+    return f"""
+    <details class="finding-details">
+        <summary>Details</summary>
+
+        <div class="details-grid">
+            {desc_section}
+
+            <div class="detail-card">
+                <div class="detail-title">Reason</div>
+                <div class="detail-text">{_safe(getattr(item, 'reason', ''))}</div>
+            </div>
+
+            <div class="detail-card">
+                <div class="detail-title">Evidence</div>
+                {_evidence_block(evidence)}
+            </div>
+
+            <div class="detail-card">
+                <div class="detail-title">Quick Fix</div>
+                <div class="detail-text">{_safe(quick_fix)}</div>
+            </div>
+
+            <div class="detail-card">
+                <div class="detail-title">Proper Fix</div>
+                <div class="detail-text">{_safe(proper_fix)}</div>
+            </div>
+
+            {matcher_section}
+            {extracted_section}
+            {curl_section}
+            {refs_section}
+            {tags_section}
+        </div>
+    </details>
+    """
+
+
+def _security_short_context(item) -> str:
+    matched = getattr(item, "matched_at", "") or item.host or ""
+    desc = getattr(item, "description", "") or getattr(item, "reason", "") or ""
+
+    if matched and desc:
+        return f"{matched[:80]} · {desc.split('.')[0][:90]}"
+
+    if matched:
+        return matched[:120]
+
+    if desc:
+        return desc.split('.')[0][:120]
+
+    return "—"
+
+
+def _security_finding_row(item) -> str:
+    risk = item.risk.value if hasattr(item.risk, "value") else str(item.risk)
+    priority = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+    confidence = item.confidence.value if hasattr(item.confidence, "value") else str(item.confidence)
+    severity = item.severity.value if hasattr(item.severity, "value") else str(item.severity)
+
+    host = item.host or item.ip or "—"
+    cve_ids = getattr(item, "cve_ids", []) or []
+    template_id = item.template_id or "—"
+    name = item.name or "Unnamed finding"
+
+    details = _security_details_block(item)
+    context = _security_short_context(item)
+
+    return f"""
+    <tr class="finding-row sec-row" data-risk="{_safe(risk)}" data-priority="{_safe(priority)}">
+        <td class="td-host"><span class="host-ip">{_safe(host)}</span></td>
+
+        <td class="td-severity">{_security_severity_badge(severity)}</td>
+
+        <td class="td-template">
+            <strong>{_safe(template_id)}</strong>
+            <span class="category-tag">{_safe(name)}</span>
+        </td>
+
+        <td class="td-risk">{_risk_badge(risk)}</td>
+        <td class="td-priority">{_priority_badge(priority)}</td>
+        <td class="td-confidence">{_confidence_badge(confidence)}</td>
+        <td class="td-score">{_score_bar(item.final_score)}</td>
+        <td class="td-cve">{_security_cve_links(cve_ids)}</td>
+
+        <td class="td-context">
+            <div class="context-text">{_safe(context)}</div>
+            {details}
+        </td>
+    </tr>
+    """
+
+
+def _scan_top_priority_card(item, rank: int) -> str:
+    risk = item.risk.value if hasattr(item.risk, "value") else str(item.risk)
+    priority = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+    color = _PRIORITY_COLOR.get(priority, _RISK_COLOR.get(risk, "#94a3b8"))
+
+    metadata = getattr(item, "metadata", {}) or {}
+    title = metadata.get("title")
+    url = metadata.get("url")
+
+    subline = f"{_safe(getattr(item, 'category', ''))} · {_priority_badge(priority)}"
+
+    if title:
+        subline += f'<div class="trc-web-title">Title: {_safe(title)}</div>'
+    elif url:
+        subline += f'<div class="trc-web-title">URL: {_safe(url)}</div>'
+
+    return f"""
+    <div class="top-risk-card" style="border-left-color:{color}">
+        <div class="trc-rank">#{rank}</div>
+
+        <div class="trc-info">
+            <div class="trc-type-tag trc-type-port">PORT</div>
+            <div class="trc-title">{_safe(item.host)} — Port {_safe(item.port)} ({_safe(item.service)})</div>
+            <div class="trc-cat">{subline}</div>
+        </div>
+
+        <div class="trc-score" style="color:{color}">{_safe(item.final_score)}/5</div>
+    </div>
+    """
+
+
+def _security_top_priority_card(item, rank: int) -> str:
+    priority = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+    severity = item.severity.value if hasattr(item.severity, "value") else str(item.severity)
+    color = _PRIORITY_COLOR.get(priority, _SEVERITY_COLOR.get(severity, "#94a3b8"))
+
+    template_id = item.template_id or "unknown-template"
+    name = item.name or "Unnamed finding"
+    matched_at = item.matched_at or item.host or "—"
+
+    subline = f"{_safe(severity.upper())} severity · {_priority_badge(priority)}"
+
+    return f"""
+    <div class="top-risk-card" style="border-left-color:{color}">
+        <div class="trc-rank">#{rank}</div>
+
+        <div class="trc-info">
+            <div class="trc-type-tag trc-type-sec">SEC</div>
+            <div class="trc-title">{_safe(template_id)} — {_safe(name)}</div>
+            <div class="trc-cat">{subline}</div>
+            <div class="trc-web-title">Target: {_safe(matched_at)}</div>
+        </div>
+
+        <div class="trc-score" style="color:{color}">{_safe(item.final_score)}/5</div>
+    </div>
+    """
+
+
+def _unified_top_priority_section(report: ScanReport) -> str:
+    items = report.top_priority[:5]
+
+    if not items:
+        return '<div class="muted" style="padding:12px 0">No findings to display.</div>'
+
+    cards = ""
+
+    for i, item in enumerate(items, 1):
+        if hasattr(item, "template_id"):
+            cards += _security_top_priority_card(item, i)
+        else:
+            cards += _scan_top_priority_card(item, i)
 
     return cards
 
@@ -367,19 +620,126 @@ def generate_html_report(report: ScanReport) -> str:
 
     timestamp = datetime.now().strftime("%d %B %Y, %H:%M")
 
-    total = len(report.findings)
-    high = report.high_count
-    medium = report.medium_count
-    low = report.low_count
-    critical_p = report.critical_priority_count
-    high_p = report.high_priority_count
+    # Scan finding counts
+    scan_total = len(report.findings)
+    scan_high = report.high_count
+    scan_medium = report.medium_count
+    scan_low = report.low_count
+
+    # Security finding counts
+    security_total = len(report.security_findings)
+    security_high = report.security_high_count
+    security_medium = report.security_medium_count
+    security_low = report.security_low_count
+    security_critical_sev = report.security_critical_severity_count
+    security_high_sev = report.security_high_severity_count
+    security_medium_sev = report.security_medium_severity_count
+    security_low_sev = report.security_low_severity_count
+    security_info_sev = report.security_info_severity_count
+
+    # Unified counts (used in stats grid, filter bar, executive summary)
+    total = scan_total + security_total
+    high = scan_high + security_high
+    medium = scan_medium + security_medium
+    low = scan_low + security_low
+    critical_p = report.critical_priority_count + report.security_critical_priority_count
+    high_p = report.high_priority_count + report.security_high_priority_count
+
     overall = report.overall_risk
     overall_p = report.overall_priority
-
     overall_color = _RISK_COLOR.get(overall.lower(), "#94a3b8")
 
-    rows = "".join(_finding_row(item) for item in report.findings)
-    top_risks = _top_risks_section(report)
+    scan_rows = "".join(_finding_row(item) for item in report.findings)
+    security_rows = "".join(_security_finding_row(item) for item in report.security_findings)
+    top_priority_cards = _unified_top_priority_section(report)
+
+    # Conditional scan section (port/service table)
+    if scan_total > 0:
+        scan_section_html = f"""
+        <div class="subsection-title">Open Service Findings ({scan_total})</div>
+
+        <div class="table-wrap">
+            <table id="findings-table">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Port</th>
+                        <th>Service</th>
+                        <th>Exposure</th>
+                        <th>Risk</th>
+                        <th>Priority</th>
+                        <th>Confidence</th>
+                        <th>Score</th>
+                        <th>CVE</th>
+                        <th>Context / Details</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {scan_rows}
+                </tbody>
+            </table>
+        </div>
+        """
+    else:
+        scan_section_html = ""
+
+    # Conditional security section (vulnerability/misconfig table)
+    if security_total > 0:
+        security_section_html = f"""
+        <div class="subsection-title">Security Findings ({security_total})</div>
+
+        <div class="table-wrap">
+            <table id="security-findings-table">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Severity</th>
+                        <th>Template</th>
+                        <th>Risk</th>
+                        <th>Priority</th>
+                        <th>Confidence</th>
+                        <th>Score</th>
+                        <th>CVE</th>
+                        <th>Context / Details</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {security_rows}
+                </tbody>
+            </table>
+        </div>
+        """
+    else:
+        security_section_html = ""
+
+    # Executive summary — only mention what's actually present
+    exec_lines = []
+
+    if scan_total > 0:
+        exec_lines.append(
+            f'The scan identified <span class="exec-highlight">{scan_total} open service findings</span> '
+            f'for <span class="exec-highlight">{_safe(target)}</span> '
+            f'(<span class="exec-highlight" style="color:{_RISK_COLOR["high"]}">{scan_high}</span> high, '
+            f'<span class="exec-highlight" style="color:{_RISK_COLOR["medium"]}">{scan_medium}</span> medium, '
+            f'<span class="exec-highlight" style="color:{_RISK_COLOR["low"]}">{scan_low}</span> low).'
+        )
+
+    if security_total > 0:
+        exec_lines.append(
+            f'It also surfaced <span class="exec-highlight">{security_total} security findings</span> '
+            f'(<span class="exec-highlight" style="color:{_SEVERITY_COLOR["critical"]}">{security_critical_sev}</span> critical, '
+            f'<span class="exec-highlight" style="color:{_SEVERITY_COLOR["high"]}">{security_high_sev}</span> high, '
+            f'<span class="exec-highlight" style="color:{_SEVERITY_COLOR["medium"]}">{security_medium_sev}</span> medium, '
+            f'<span class="exec-highlight" style="color:{_SEVERITY_COLOR["low"]}">{security_low_sev}</span> low, '
+            f'<span class="exec-highlight" style="color:{_SEVERITY_COLOR["info"]}">{security_info_sev}</span> info).'
+        )
+
+    if not exec_lines:
+        exec_lines.append(f'No findings were produced for <span class="exec-highlight">{_safe(target)}</span>.')
+
+    exec_findings_text = "<br><br>".join(exec_lines)
 
     metadata_cards = "".join([
         _metadata_card("Target", target, True),
@@ -910,7 +1270,8 @@ def generate_html_report(report: ScanReport) -> str:
         }}
 
         .risk-pill,
-        .priority-badge {{
+        .priority-badge,
+        .severity-pill {{
             display: inline-flex;
             align-items: center;
             gap: 4px;
@@ -1121,6 +1482,76 @@ def generate_html_report(report: ScanReport) -> str:
             font-family: var(--mono);
         }}
 
+        .subsection-title {{
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text2);
+            font-weight: 600;
+            margin: 24px 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed var(--border);
+        }}
+
+        .ref-list {{
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 11px;
+        }}
+
+        .ref-list li {{
+            margin-bottom: 4px;
+            word-break: break-all;
+        }}
+
+        .ref-list a {{
+            color: #93c5fd;
+            text-decoration: none;
+            font-family: var(--mono);
+        }}
+
+        .ref-list a:hover {{
+            text-decoration: underline;
+        }}
+
+        .trc-type-tag {{
+            display: inline-block;
+            font-size: 9px;
+            font-family: var(--mono);
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }}
+
+        .trc-type-port {{
+            background: rgba(59,130,246,0.18);
+            color: #93c5fd;
+        }}
+
+        .trc-type-sec {{
+            background: rgba(239,68,68,0.18);
+            color: #fca5a5;
+        }}
+
+        .td-severity,
+        .td-template {{
+            white-space: nowrap;
+        }}
+
+        .td-template strong {{
+            display: block;
+            margin-bottom: 4px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: #93c5fd;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }}
+
         @media (max-width: 1200px) {{
             .metadata-grid {{
                 grid-template-columns: repeat(2, 1fr);
@@ -1242,18 +1673,14 @@ def generate_html_report(report: ScanReport) -> str:
     <div class="two-col">
         <div class="top-risks-panel">
             <div class="section-title">Top Priority Findings</div>
-            {top_risks}
+            {top_priority_cards}
         </div>
 
         <div class="exec-panel">
             <div class="section-title">Executive Summary</div>
 
             <div class="exec-text">
-                The scan identified <span class="exec-highlight">{total} open service findings</span>
-                for <span class="exec-highlight">{_safe(target)}</span>.
-                <span class="exec-highlight" style="color:{_RISK_COLOR['high']}">{high}</span> are high risk,
-                <span class="exec-highlight" style="color:{_RISK_COLOR['medium']}">{medium}</span> are medium risk,
-                and <span class="exec-highlight" style="color:{_RISK_COLOR['low']}">{low}</span> are low risk.
+                {exec_findings_text}
 
                 <br><br>
 
@@ -1279,7 +1706,7 @@ def generate_html_report(report: ScanReport) -> str:
         </div>
     </div>
 
-    <div class="section-title">All Findings</div>
+    <div class="section-title">Findings Overview ({total})</div>
 
     <div class="filter-bar">
         <span class="filter-label">Filter:</span>
@@ -1290,28 +1717,9 @@ def generate_html_report(report: ScanReport) -> str:
         <button class="filter-btn f-critical" onclick="filterPriority(event, 'critical')">Critical ({critical_p})</button>
     </div>
 
-    <div class="table-wrap">
-        <table id="findings-table">
-            <thead>
-                <tr>
-                    <th>Host</th>
-                    <th>Port</th>
-                    <th>Service</th>
-                    <th>Exposure</th>
-                    <th>Risk</th>
-                    <th>Priority</th>
-                    <th>Confidence</th>
-                    <th>Score</th>
-                    <th>CVE</th>
-                    <th>Context / Details</th>
-                </tr>
-            </thead>
+    {scan_section_html}
 
-            <tbody>
-                {rows}
-            </tbody>
-        </table>
-    </div>
+    {security_section_html}
 
 </main>
 
