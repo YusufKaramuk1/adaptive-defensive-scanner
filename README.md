@@ -1236,3 +1236,4 @@ Today's `cve_enrichment.py` works on a small static table (Apache 2.4.49, SMB, R
 Once that lands, EPSS adds the "is this *actually* being exploited" dimension, and the priority engine gains a much more meaningful input than CVSS alone.
 
 See `ROADMAP.md` sections 5.1 and 5.2 for the planned shape.
+
