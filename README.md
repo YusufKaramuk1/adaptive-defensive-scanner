@@ -29,9 +29,7 @@ and per-finding remediation guidance.
 See [`examples/`](examples/) for ready-to-run sample inputs covering all three
 import modes (Nmap XML, httpx / Osmedeus JSONL, Nuclei JSON / JSONL).
 
-> **Screenshot:** After running the Quick Start, open
-> `reports/ads_report.html` in a browser and add a screenshot to
-> `docs/screenshot.png` to display it here.
+![ADS unified HTML report — Nuclei import with severity badges, merged top-priority panel, and per-finding remediation details](docs/screenshot.png)
 
 ---
 
