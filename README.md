@@ -10,7 +10,7 @@ Instead, ADS is designed to sit above those tools and interpret their technical 
 Technical finding → Security meaning → Defensive action
 ```
 
-In practice, ADS takes scanner outputs, normalizes them, enriches them with context, calculates risk and priority, generates remediation guidance, suggests firewall rules, creates reports, and tracks changes over time.
+In practice, ADS takes scanner outputs, normalizes them, enriches them with context, calculates risk and priority, generates remediation guidance, suggests firewall rules, creates a unified report, and tracks changes over time.
 
 ---
 
@@ -55,7 +55,7 @@ ADS therefore acts as a defensive interpretation layer.
 ```text
 Scan / Import
   ↓
-Normalize Finding
+Normalize Finding (ScanFinding or SecurityFinding)
   ↓
 Service Classification
   ↓
@@ -71,7 +71,7 @@ Fix Recommendation
   ↓
 Firewall Rule Suggestion
   ↓
-HTML / JSON Report
+Unified HTML / JSON Report
   ↓
 History / Diff
 ```
@@ -95,6 +95,7 @@ ADS currently supports:
 - Host-aware findings
 - Nmap XML import
 - httpx / Osmedeus JSONL import
+- Nuclei JSON / JSONL import
 - Service classification
 - Context-aware risk scoring
 - Local CVE enrichment
@@ -102,17 +103,17 @@ ADS currently supports:
 - Confidence scoring
 - Evidence generation
 - Priority calculation
-- Quick fix recommendation
-- Proper fix recommendation
+- Quick-fix recommendation
+- Proper-fix recommendation
 - UFW firewall rule suggestion
 - iptables firewall rule suggestion
-- HTML report generation
-- JSON report generation
-- Scan history
-- Scan diff
-- Host-aware diff
+- Unified HTML report (scan + security findings in one artifact)
+- Unified JSON report (single schema for both pipelines)
+- Scan history (last 20 runs)
+- Scan diff (host-aware)
 - Import source metadata tracking
-- Web fingerprint metadata reporting
+- Web fingerprint metadata in reports
+- Security finding pipeline for Nuclei-style vulnerability inputs
 
 ---
 
@@ -150,11 +151,13 @@ ADS/
 ├── integrations/
 │   ├── __init__.py
 │   ├── nmap_xml_importer.py
-│   └── osmedeus_httpx_importer.py
+│   ├── osmedeus_httpx_importer.py
+│   └── nuclei_json_importer.py
 │
 ├── analyzer/
 │   ├── risk_mapper.py
-│   └── scan_diff.py
+│   ├── scan_diff.py
+│   └── security_finding_analyzer.py
 │
 ├── knowledge_base/
 │   ├── service_classifier.py
@@ -170,7 +173,8 @@ ADS/
 ├── reporter/
 │   ├── html_reporter.py
 │   ├── json_reporter.py
-│   └── diff_reporter.py
+│   ├── diff_reporter.py
+│   └── security_json_reporter.py
 │
 ├── utils/
 │   ├── helpers.py
@@ -186,13 +190,20 @@ ADS/
 │   └── nmap_test.xml
 │
 ├── test_data/
-│   └── httpx_import_test.jsonl
+│   ├── httpx_import_test.jsonl
+│   ├── nmap_import_test.xml
+│   ├── nuclei_import_test.jsonl
+│   ├── diff_current.json
+│   └── diff_previous.json
 │
 ├── test_priority.py
 ├── test_scan_diff.py
 ├── test_subnet_expand.py
 ├── test_nmap_xml_importer.py
-└── test_httpx_jsonl_importer.py
+├── test_httpx_jsonl_importer.py
+├── test_nuclei_json_importer.py
+├── test_security_finding_analyzer.py
+└── test_unified_report.py
 ```
 
 ---
@@ -209,12 +220,12 @@ Responsibilities:
 - Select scan or import mode
 - Run Nmap scanner or external importer
 - Build scan context
-- Send raw findings to analyzer
+- Send raw findings to the appropriate analyzer (scan or security)
 - Generate fixes
 - Generate firewall rules
 - Calculate priority
-- Generate JSON report
-- Generate HTML report
+- Build a unified `ScanReport` (scan findings + security findings)
+- Generate JSON and HTML reports
 - Save scan history
 - Run scan comparison / diff
 
@@ -228,14 +239,17 @@ Important models:
 
 | Model | Purpose |
 |---|---|
-| `ScanFinding` | Raw normalized finding before analysis |
-| `AnalyzedFinding` | Finding after ADS risk, evidence, priority, fix, and rule enrichment |
+| `ScanFinding` | Raw normalized finding from a scan/fingerprint source (Nmap, httpx) |
+| `AnalyzedFinding` | `ScanFinding` after ADS risk, evidence, priority, fix, and rule enrichment |
+| `SecurityFinding` | Raw normalized vulnerability/misconfiguration finding (Nuclei, Tsunami) |
+| `AnalyzedSecurityFinding` | `SecurityFinding` after ADS risk, priority, confidence, evidence, fix enrichment |
+| `SecuritySeverity` | Raw severity enum from the source tool (info / low / medium / high / critical / unknown) |
 | `ScanContext` | Scan metadata such as target, environment, criticality, scan mode, source tool |
-| `ScanReport` | Full report object |
+| `ScanReport` | Unified report container; can hold both `findings` and `security_findings` |
 | `PortChange` | Diff item for changed ports/findings |
 | `DiffReport` | Full diff report |
 
-Current `ScanFinding` fields:
+`ScanFinding` fields:
 
 ```text
 host
@@ -248,9 +262,7 @@ version
 metadata
 ```
 
-`metadata` is used to preserve importer-specific details such as httpx web fingerprint information.
-
-Example metadata:
+`metadata` preserves importer-specific details such as httpx web fingerprint information:
 
 ```json
 {
@@ -263,6 +275,12 @@ Example metadata:
   "scheme": "https"
 }
 ```
+
+`SecurityFinding` carries Nuclei-style fields: `template_id`, `name`, `severity`, `description`, `tags`, `references`, `cve_ids`, `matched_at`, `matcher_name`, `extracted_results`, `curl_command`, plus the original `raw` payload.
+
+`AnalyzedSecurityFinding` adds ADS-side fields on top: `base_score`, `final_score`, `risk` (shared `RiskLevel`), `priority` (shared `PriorityLevel`), `confidence` (shared `ConfidenceLevel`), `reason`, `evidence`, `quick_fix`, `proper_fix`.
+
+Because `risk`, `priority`, and `confidence` enums are shared with `AnalyzedFinding`, both pipelines can be ranked together without conversion.
 
 ---
 
@@ -277,7 +295,7 @@ scanner/nmap_scanner.py
 scanner/subnet_scanner.py
 ```
 
-`nmap_scanner.py` runs Nmap or mock scan.
+`nmap_scanner.py` runs Nmap or a mock scan.
 
 `subnet_scanner.py` supports subnet expansion and parallel scanning.
 
@@ -293,7 +311,8 @@ Current files:
 integrations/
 ├── __init__.py
 ├── nmap_xml_importer.py
-└── osmedeus_httpx_importer.py
+├── osmedeus_httpx_importer.py
+└── nuclei_json_importer.py
 ```
 
 Goal:
@@ -303,32 +322,36 @@ External tool output
   ↓
 Importer
   ↓
-ADS normalized finding
+ADS normalized finding (ScanFinding or SecurityFinding)
   ↓
 ADS analysis pipeline
 ```
 
 Current supported importers:
 
-| Importer | Status | Purpose |
-|---|---:|---|
-| Nmap XML Importer | Complete | Reads Nmap XML and converts open ports into `ScanFinding` |
-| httpx / Osmedeus JSONL Importer | Complete first version | Reads HTTP fingerprint JSONL and converts it into `ScanFinding` with metadata |
+| Importer | Output Type | Status | Purpose |
+|---|---|---:|---|
+| Nmap XML Importer | `ScanFinding` | Complete | Reads Nmap XML and converts open ports |
+| httpx / Osmedeus JSONL Importer | `ScanFinding` | Complete | Reads HTTP fingerprint JSONL with web metadata |
+| Nuclei JSON / JSONL Importer | `SecurityFinding` | Complete | Reads Nuclei vulnerability findings |
+
+Malformed lines in JSONL inputs are skipped with a warning rather than aborting the run.
 
 ---
 
 ### `analyzer/`
 
-Contains risk and diff logic.
+Contains risk, diff, and security-analysis logic.
 
 Current files:
 
 ```text
 analyzer/risk_mapper.py
 analyzer/scan_diff.py
+analyzer/security_finding_analyzer.py
 ```
 
-`risk_mapper.py` performs:
+`risk_mapper.py` performs the scan-side analysis:
 
 - Service classification
 - Base risk calculation
@@ -336,13 +359,19 @@ analyzer/scan_diff.py
 - CVE enrichment
 - Confidence scoring
 - Evidence generation
-- Metadata-aware reasoning
+- Metadata-aware reasoning (web fingerprint signals)
+
+`security_finding_analyzer.py` performs the security-side analysis:
+
+- Nuclei severity → base score mapping
+- Context-aware adjustment (environment, criticality)
+- CVE-driven risk and priority lift
+- Extracted-results confidence boost
+- Quick-fix and proper-fix generation per template
 
 `scan_diff.py` compares previous and current JSON reports.
 
-Diff is host-aware.
-
-It compares findings using:
+Diff is host-aware. It compares findings using:
 
 ```text
 host + port + protocol
@@ -391,11 +420,13 @@ needs_review
 
 `cve_enrichment.py` currently provides local/static CVE matching.
 
-Future improvement:
+Planned upgrade:
 
 ```text
-Real CVE API + local cache
+Real CVE API (NVD or Vulners) + local cache + EPSS layering
 ```
+
+See `ROADMAP.md` sections 5.1 and 5.2 for the planned shape.
 
 ---
 
@@ -475,26 +506,21 @@ Current files:
 reporter/html_reporter.py
 reporter/json_reporter.py
 reporter/diff_reporter.py
+reporter/security_json_reporter.py
 ```
 
-Reports include:
+`html_reporter.py` produces the **unified** HTML report. A single page can render:
 
-- Target
-- Environment
-- Criticality
-- Scan mode
-- Source tool
-- Source file
-- Overall risk
-- Overall priority
-- Top priority findings
-- All findings
-- CVEs
-- Confidence
-- Evidence
-- Web fingerprint metadata
-- Remediation
-- Firewall rules
+- A "Findings Overview" section with shared filter controls
+- An "Open Service Findings" subsection (port/service rows) — shown only when scan findings are present
+- A "Security Findings" subsection (Nuclei-style rows) — shown only when security findings are present
+- A merged "Top Priority Findings" panel that interleaves both kinds and sorts by priority
+
+`json_reporter.py` produces the **unified** JSON. Schema includes both `summary` and `security_summary`, plus `findings` and `security_findings` arrays.
+
+`diff_reporter.py` renders host-aware scan diffs.
+
+`security_json_reporter.py` produces a standalone Nuclei-only JSON. It is currently retained for backward compatibility alongside the unified JSON, and is scheduled to be deprecated.
 
 HTML report uses English UI labels.
 
@@ -522,7 +548,7 @@ reports/ads_report_YYYYMMDD_HHMMSS.json
 History paths are normalized to POSIX style:
 
 ```text
-reports/ads_report_20260513_165618.json
+reports/ads_report_20260518_125721.json
 ```
 
 This improves compatibility between Windows and Linux/Kali environments.
@@ -541,6 +567,7 @@ ADS currently supports these scan modes:
 | `nmap_subnet_sequential` | Sequential subnet scan |
 | `nmap_xml_import` | Import from Nmap XML |
 | `httpx_jsonl_import` | Import from httpx / Osmedeus JSONL |
+| `nuclei_json_import` | Import from Nuclei JSON / JSONL |
 
 ---
 
@@ -626,6 +653,37 @@ source_file: test_data/httpx_import_test.jsonl
 
 ---
 
+### Nuclei JSON / JSONL Import
+
+Import Nuclei JSON or JSONL:
+
+```powershell
+python main.py --import-nuclei-json test_data\nuclei_import_test.jsonl --environment external --criticality high --json
+```
+
+Expected scan mode:
+
+```text
+nuclei_json_import
+```
+
+Expected source metadata:
+
+```text
+source_tool: nuclei
+source_file: test_data/nuclei_import_test.jsonl
+```
+
+The Nuclei importer accepts:
+
+- JSONL (one finding per line)
+- A JSON array of findings
+- A single JSON finding object
+
+It populates `SecurityFinding` rather than `ScanFinding`, and the results flow through `security_finding_analyzer.py` before being rendered in the unified HTML report.
+
+---
+
 ## Example httpx JSONL Input
 
 ```json
@@ -659,9 +717,7 @@ metadata.status_code: 200
 metadata.webserver: Apache/2.4.49
 ```
 
-ADS can then enrich this with CVE data.
-
-Example result:
+ADS then enriches this with CVE data:
 
 ```text
 admin.example.com Port 8080 http
@@ -677,6 +733,56 @@ This shows the main ADS value:
 ```text
 httpx fingerprint → product/version → CVE enrichment → defensive action
 ```
+
+---
+
+## Example Nuclei JSONL Input
+
+```json
+{"template-id":"apache-path-traversal","info":{"name":"Apache Path Traversal","severity":"critical","classification":{"cve-id":["CVE-2021-41773"]}},"host":"http://admin.example.com:8080","matched-at":"http://admin.example.com:8080/cgi-bin/.%2e/.%2e/etc/passwd"}
+{"template-id":"exposed-panel","info":{"name":"Exposed Admin Panel","severity":"medium"},"host":"https://panel.example.com","matched-at":"https://panel.example.com/login"}
+{"template-id":"tech-detect","info":{"name":"Technology Detection","severity":"info"},"host":"https://www.example.com"}
+```
+
+ADS analyzes:
+
+```text
+apache-path-traversal  → Risk: HIGH    Priority: CRITICAL  Confidence: HIGH  CVE-2021-41773
+exposed-panel          → Risk: HIGH    Priority: HIGH      Confidence: MEDIUM
+tech-detect            → Risk: LOW     Priority: LOW       Confidence: LOW
+```
+
+`SecuritySeverity.INFO` findings remain low priority but stay in the report as context / inventory.
+
+---
+
+## Unified Report
+
+A single ADS run produces a single HTML file and a single JSON file, regardless of whether the inputs are scan findings (Nmap/httpx) or security findings (Nuclei).
+
+The unified `ScanReport` model holds:
+
+```text
+ScanReport
+├── context: ScanContext
+├── findings: list[AnalyzedFinding]            ← Nmap / httpx pipeline output
+└── security_findings: list[AnalyzedSecurityFinding]  ← Nuclei pipeline output
+```
+
+`overall_risk` and `overall_priority` consider both lists and return the higher.
+
+`top_priority` merges both lists and sorts by priority, then by score.
+
+In the HTML report:
+
+- "Findings Overview" is the wrapper section, with a single filter bar that targets both tables.
+- "Open Service Findings" subsection renders only when port findings are present.
+- "Security Findings" subsection renders only when Nuclei-style findings are present.
+- The "Top Priority Findings" panel tags each card with either `[PORT]` or `[SEC]` so the source is obvious at a glance.
+
+In the unified JSON, every report carries both `summary` and `security_summary` blocks, plus `findings` and `security_findings` arrays. Consumers can read either or both.
+
+The legacy `ads_security_report_*.json` produced by `security_json_reporter.py` is still emitted for backward compatibility, but the unified JSON is the canonical artifact recorded in scan history.
 
 ---
 
@@ -706,6 +812,7 @@ Example:
 | `445/smb` | internal | HIGH |
 | `445/smb` | external | HIGH risk / CRITICAL priority |
 | `Apache 2.4.49` | external web | HIGH risk / CRITICAL priority |
+| Nuclei `apache-path-traversal` | external web | HIGH risk / CRITICAL priority |
 
 ---
 
@@ -726,8 +833,9 @@ Examples:
 | Only port/service exists | LOW |
 | Product or version exists | MEDIUM |
 | Product/version with strong CVE match | HIGH |
-| Importer metadata exists | MEDIUM |
-| Validated vulnerability in future | HIGH |
+| Importer metadata exists (web fingerprint) | MEDIUM |
+| Nuclei finding with extracted results | HIGH |
+| Validated vulnerability (future) | HIGH |
 
 ---
 
@@ -750,6 +858,8 @@ This is intentional.
 
 A finding can be medium-risk technically but high-priority operationally due to exposure, business context, evidence, or operational urgency.
 
+Several planned upgrades make this distinction even stronger — see `ROADMAP.md` sections 5.3 (Exposure-Aware Priority), 5.4 (Diff-Driven Priority Boost), and 5.5 ("Why This Priority?" trace).
+
 ---
 
 ## Reports
@@ -762,22 +872,20 @@ Generated at:
 reports/ads_report.html
 ```
 
-The HTML report includes:
+The unified HTML report includes:
 
-- Security Scan Report
-- Overall Risk / Priority
+- Security Scan Report header
+- Overall Risk / Priority banner
+- Stats grid (unified totals across scan + security findings)
 - Scan Metadata
-- Top Priority Findings
-- Executive Summary
-- All Findings
-- Context / Details
-- Web Fingerprint
-- Remediation
-- Firewall Rule
+- Top Priority Findings (merged, with PORT / SEC tags)
+- Executive Summary (conditional — mentions only what is present)
+- Findings Overview with a shared filter bar
+- Open Service Findings table (when scan findings exist)
+- Security Findings table (when security findings exist)
+- Per-row expandable details: Reason, Evidence, Quick Fix, Proper Fix, Firewall Rule, Web Fingerprint, References, Reproduction (curl), Matcher, Tags
 
-The current HTML report uses a summary table with expandable details.
-
-Main table columns:
+Open Service Findings columns:
 
 ```text
 Host
@@ -792,7 +900,21 @@ CVE
 Context / Details
 ```
 
-Detailed information is available under each finding through the `Details` dropdown.
+Security Findings columns:
+
+```text
+Host
+Severity
+Template
+Risk
+Priority
+Confidence
+Score
+CVE
+Context / Details
+```
+
+Both tables share the `.finding-row` class so the filter buttons apply to both at once.
 
 ---
 
@@ -804,10 +926,20 @@ Generated as timestamped files:
 reports/ads_report_YYYYMMDD_HHMMSS.json
 ```
 
-Also copied to:
+Also tracked as the latest scan:
 
 ```text
 reports/latest_scan.json
+```
+
+Schema (top-level keys):
+
+```text
+context
+summary
+security_summary
+findings
+security_findings
 ```
 
 JSON reports are used for:
@@ -818,6 +950,8 @@ JSON reports are used for:
 - Future dashboard
 - SIEM export
 - Automation
+
+A legacy `ads_security_report_YYYYMMDD_HHMMSS.json` is also produced for Nuclei imports for backward compatibility.
 
 ---
 
@@ -832,15 +966,15 @@ python main.py --history
 Example:
 
 ```text
-#15  2026-05-13T16:56:18  Hedef: httpx:httpx_import_test.jsonl (4 hosts)
-     Ortam: external   | Kritiklik: medium   | Mode: httpx_jsonl_import
-     Source: httpx (test_data/httpx_import_test.jsonl)
-     reports/ads_report_20260513_165618.json  (6.7 KB)
+#15  2026-05-18T12:57:21  Target: http://admin.example.com:8080, https://panel.example.com, https://www.example.com
+     Environment: external   | Criticality: high     | Mode: nuclei_json_import
+     Source: nuclei (test_data/nuclei_import_test.jsonl)
+     reports/ads_report_20260518_125721.json  (8.2 KB)
 ```
 
 Note:
 
-Some older history records may show `unknown` for scan mode or source fields because they were created before metadata support was added.
+Older history records may show `unknown` for scan mode or source fields because they were created before metadata support was added.
 
 ---
 
@@ -860,15 +994,15 @@ Diff can detect:
 - Risk decreased
 - Unchanged findings
 
-Diff is host-aware.
-
-It compares:
+Diff is host-aware:
 
 ```text
 host + port + protocol
 ```
 
 This prevents subnet scan comparison mistakes.
+
+Note: today's diff covers scan findings only. A mirror for security findings is planned — see `ROADMAP.md` section 6.5.
 
 ---
 
@@ -877,11 +1011,14 @@ This prevents subnet scan comparison mistakes.
 Run all current tests:
 
 ```powershell
-python test_httpx_jsonl_importer.py
-python test_nmap_xml_importer.py
-python test_scan_diff.py
-python test_priority.py
 python test_subnet_expand.py
+python test_priority.py
+python test_scan_diff.py
+python test_nmap_xml_importer.py
+python test_httpx_jsonl_importer.py
+python test_nuclei_json_importer.py
+python test_security_finding_analyzer.py
+python test_unified_report.py
 ```
 
 Expected result:
@@ -894,11 +1031,14 @@ Current tests:
 
 | Test File | Purpose |
 |---|---|
-| `test_httpx_jsonl_importer.py` | Tests httpx / Osmedeus JSONL importer |
-| `test_nmap_xml_importer.py` | Tests Nmap XML importer |
-| `test_scan_diff.py` | Tests scan diff logic |
-| `test_priority.py` | Tests priority engine behavior |
-| `test_subnet_expand.py` | Tests subnet expansion helper |
+| `test_subnet_expand.py` | Subnet expansion helper |
+| `test_priority.py` | Priority engine behavior |
+| `test_scan_diff.py` | Scan diff logic |
+| `test_nmap_xml_importer.py` | Nmap XML importer |
+| `test_httpx_jsonl_importer.py` | httpx / Osmedeus JSONL importer |
+| `test_nuclei_json_importer.py` | Nuclei JSON / JSONL importer |
+| `test_security_finding_analyzer.py` | Security finding analyzer (Nuclei pipeline) |
+| `test_unified_report.py` | Unified ScanReport behavior (merge, counts, sorting) |
 
 ---
 
@@ -911,18 +1051,20 @@ Subnet scan
 Parallel scan
 Host-aware findings
 Context-aware risk
-CVE enrichment
+CVE enrichment (local)
 Confidence scoring
 Evidence generation
 Priority engine
 Fix recommendation
 Firewall rule suggestion
-HTML report
-JSON report
-History
+Unified HTML report (scan + security)
+Unified JSON report
+History (last 20 runs)
 Host-aware diff
 Nmap XML importer
 httpx / Osmedeus JSONL importer
+Nuclei JSON / JSONL importer
+SecurityFinding pipeline (analyzer + dedicated reporter)
 Web fingerprint metadata in reports
 ```
 
@@ -930,33 +1072,34 @@ Web fingerprint metadata in reports
 
 ## Roadmap Summary
 
-Short-term:
+Short-term (active focus):
 
-- Convert terminal labels to English
-- Add compact / verbose terminal output
-- Improve terminal readability for long evidence strings
-- Add SecurityFinding model discussion
-- Start Nuclei JSON importer
+- Real CVE API + local cache (replace static CVE table)
+- EPSS integration (FIRST.org exploit-probability scoring)
+- Exposure-Aware Priority (lift / cap priority based on expected vs actual exposure)
+- Diff-Driven Priority Boost (newly appeared / increased findings get a priority bump)
+- "Why this priority?" trace (auditable, step-by-step priority calculation)
 
 Medium-term:
 
-- Nuclei JSON importer
-- Tsunami JSON importer
+- Detector layer (compose normalized findings into defensive events)
+- Tsunami JSON importer (reuses SecurityFinding pipeline)
 - Amass / Subfinder asset importer
-- Detector layer
-- Asset inventory
-- Workspace system
-- Real CVE API + local cache
+- Scan + Security correlation (link httpx fingerprint and matching Nuclei finding)
+- Security finding diff
+- Workspace system (per-engagement isolation)
 
 Long-term:
 
-- YAML workflow/config
+- YAML workflow / configuration
 - Plugin system
 - Go scanner worker
 - Dashboard
 - SIEM export
-- Notification
-- AI-assisted reporting
+- Notifications
+- AI-assisted reporting (never AI-assigned scoring)
+
+See `ROADMAP.md` for the detailed version, including the reasoning behind each item.
 
 ---
 
@@ -970,13 +1113,15 @@ Goal:
 Read output from external security tools and turn it into defensive interpretation.
 ```
 
-Planned integrations:
+Integrations status:
 
-- Nmap XML
-- httpx / Osmedeus JSONL
-- Nuclei JSON
-- Tsunami JSON
-- Amass / Subfinder outputs
+| Tool | Status |
+|---|---|
+| Nmap XML | Complete |
+| httpx / Osmedeus JSONL | Complete |
+| Nuclei JSON / JSONL | Complete |
+| Tsunami JSON | Planned |
+| Amass / Subfinder | Planned |
 
 Future flow:
 
@@ -985,9 +1130,9 @@ Nmap / Osmedeus / httpx / Nuclei / Tsunami / Amass
         ↓
 ADS Importer / Normalizer
         ↓
-ADS Risk & Priority Engine
+ADS Risk & Priority Engine (deterministic, context-aware)
         ↓
-Fix / Firewall Rule / Report
+Fix / Firewall Rule / Unified Report
 ```
 
 ADS should not compete with those tools.
@@ -1041,7 +1186,7 @@ AI can be used later for:
 - Finding explanation
 - Natural-language report export
 
-But ADS core scoring should remain deterministic.
+But ADS core scoring stays deterministic.
 
 Correct approach:
 
@@ -1059,24 +1204,16 @@ AI randomly decides the risk score
 
 ---
 
-## Recommended Next Step
+## What's Next
 
 The next strong technical step is:
 
 ```text
-Nuclei JSON Importer
+Real CVE Enrichment + Cache, then EPSS layering
 ```
 
-Nuclei introduces direct vulnerability and misconfiguration findings.
+Today's `cve_enrichment.py` works on a small static table (Apache 2.4.49, SMB, RDP, Redis, etc.). Replacing it with a real CVE data source — backed by a local cache for reproducibility and offline use — is the single highest-leverage upgrade because every downstream layer (risk, priority, evidence, fix) benefits.
 
-This may require a new model such as:
+Once that lands, EPSS adds the "is this *actually* being exploited" dimension, and the priority engine gains a much more meaningful input than CVSS alone.
 
-```text
-SecurityFinding
-VulnerabilityFinding
-ImportedFinding
-```
-
-Nmap and httpx can continue using `ScanFinding`.
-
-Nuclei and Tsunami should probably use a dedicated security finding model.
+See `ROADMAP.md` sections 5.1 and 5.2 for the planned shape.
