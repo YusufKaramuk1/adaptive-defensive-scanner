@@ -1,69 +1,151 @@
-def generate_firewall_rules(finding: dict, environment: str) -> dict:
-    port = finding["port"]
-    protocol = finding.get("protocol", "tcp")
-    service = finding["service"].lower()
-    risk = finding["risk"]
+"""
+ADS – Firewall Rule Generator (rule_generator)
+Context-aware UFW ve iptables kuralları üretir.
+"""
 
-    is_smb = port == 445 or "smb" in service or "microsoft-ds" in service
-    is_rdp = port == 3389 or "rdp" in service or "ms-wbt-server" in service
-    is_ssh = port == 22 or "ssh" in service
-    is_msrpc = port == 135 or "msrpc" in service
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    # HTTP/HTTPS special case
-    if service in ["http", "https"] and environment == "external":
-        return {
-            "ufw": f"ufw allow {port}/{protocol}",
-            "iptables": f"iptables -A INPUT -p {protocol} --dport {port} -j ACCEPT",
-            "note": "Public web service detected. Ensure WAF, TLS hardening, proper authentication, logging and regular security testing."
-        }
-    
-    if risk == "low":
-        return {
-            "ufw": "No immediate firewall rule required. Review service necessity.",
-            "iptables": "No immediate firewall rule required. Review service necessity.",
-            "note": "Low risk service. Monitoring and service validation are recommended."
-        }
+from models import AnalyzedFinding, FirewallRules
 
+
+def _make_rules(port: int, proto: str, action: str, source: str = "") -> tuple[str, str]:
+    if action == "deny":
+        ufw      = f"ufw deny {port}/{proto}"
+        iptables = f"iptables -A INPUT -p {proto} --dport {port} -j DROP"
+    elif action == "allow_all":
+        ufw      = f"ufw allow {port}/{proto}"
+        iptables = f"iptables -A INPUT -p {proto} --dport {port} -j ACCEPT"
+    elif action == "allow_from" and source:
+        ufw      = f"ufw allow from {source} to any port {port} proto {proto}"
+        iptables = f"iptables -A INPUT -p {proto} -s {source} --dport {port} -j ACCEPT"
+    else:
+        ufw      = f"ufw allow from <trusted_ip> to any port {port} proto {proto}"
+        iptables = f"iptables -A INPUT -p {proto} -s <trusted_ip> --dport {port} -j ACCEPT"
+
+    return ufw, iptables
+
+
+# Kategorilere göre kural politikaları
+_POLICY: dict[str, dict] = {
+    # Her ortamda izin verilir (web)
+    "web_public": {
+        "action": "allow_all",
+        "note":   "Genel web servisi. WAF, TLS hardening, doğru auth, loglama ve düzenli güvenlik testi sağlanmalı.",
+    },
+    # Dışarıdan gelmemeli — engelle
+    "block_external": {
+        "action": "deny",
+        "note":   "Dış erişim tespit edildi. Bu management/internal servisin engellenmesi önerilir.",
+    },
+    # Sadece yönetici IP'sine izin ver
+    "admin_only": {
+        "action": "allow_from",
+        "source": "<admin_ip>",
+        "note":   "Yalnızca onaylı yönetici IP adreslerine erişim izni ver; diğerlerini engelle.",
+    },
+    # İç subnet'e izin ver
+    "internal_subnet": {
+        "action": "allow_from",
+        "source": "<internal_subnet>",
+        "note":   "İç ağ servisi. Yalnızca güvenilir iç subnet'e erişim izni ver.",
+    },
+    # Onaylı kaynak
+    "approved_source": {
+        "action": "allow_from",
+        "source": "<approved_source>",
+        "note":   "Üretim ortamı. En az ayrıcalık ilkesiyle yalnızca onaylı kaynaklara izin ver.",
+    },
+    # Güvenilir IP
+    "trusted_ip": {
+        "action": "allow_from",
+        "source": "<trusted_ip>",
+        "note":   "Erişimi güvenilir kaynaklarla kısıtla; servisin gerekliliğini doğrula.",
+    },
+    # Hiç açık olmamalı
+    "should_not_exist": {
+        "action": "deny",
+        "note":   "Bu servis hiçbir ortamda açık olmamalı. Derhal kapat ve nedenini araştır.",
+    },
+}
+
+
+def generate_firewall_rules(finding: AnalyzedFinding, environment: str) -> FirewallRules:
+    port     = finding.port
+    proto    = finding.protocol if hasattr(finding, "protocol") else "tcp"
+    service  = finding.service.lower()
+    category = finding.category
+    exposure = finding.expected_exposure
+    risk     = finding.risk.value if hasattr(finding.risk, "value") else str(finding.risk)
+
+    # ── Özel durumlar ──────────────────────────────────────────
+
+    # Asla açık olmaması gerekenler
+    if exposure == "should_not_be_exposed":
+        policy = _POLICY["should_not_exist"]
+        ufw, iptables = _make_rules(port, proto, "deny")
+        return FirewallRules(ufw=ufw, iptables=iptables, note=policy["note"])
+
+    # Düşük risk — kural gerekmeyebilir
+    if risk == "low" and environment == "internal":
+        return FirewallRules(
+            ufw      = f"# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+            iptables = f"# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+            note     = "Düşük riskli servis. İzleme ve servis doğrulaması önerilir.",
+        )
+
+    # ── Web servisleri ─────────────────────────────────────────
+    if category == "web" and exposure == "public_allowed":
+        ufw, iptables = _make_rules(port, proto, "allow_all")
+        return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["web_public"]["note"])
+
+    # ── External ortam ─────────────────────────────────────────
     if environment == "external":
-        if is_smb or is_rdp or is_msrpc:
-            return {
-                "ufw": f"ufw deny {port}/{protocol}",
-                "iptables": f"iptables -A INPUT -p {protocol} --dport {port} -j DROP",
-                "note": "External exposure detected. Blocking this management/internal service is recommended."
-            }
+        if exposure in {"internal_only", "internal_or_dev", "should_not_be_exposed"}:
+            ufw, iptables = _make_rules(port, proto, "deny")
+            return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["block_external"]["note"])
 
-        if is_ssh:
-            return {
-                "ufw": f"ufw allow from <trusted_admin_ip> to any port {port} proto {protocol}",
-                "iptables": f"iptables -A INPUT -p {protocol} -s <trusted_admin_ip> --dport {port} -j ACCEPT",
-                "note": "SSH should not be open to all sources. Restrict access to trusted admin IPs."
-            }
+        if exposure == "restricted_admin_only":
+            ufw, iptables = _make_rules(port, proto, "allow_from", "<admin_ip>")
+            return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["admin_only"]["note"])
 
+        if category == "mail" and exposure == "restricted_relay_only":
+            ufw, iptables = _make_rules(port, proto, "allow_from", "<mail_relay_ip>")
+            return FirewallRules(
+                ufw=ufw, iptables=iptables,
+                note="Mail relay servisi. Yalnızca onaylı mail relay IP'lerine izin ver; açık relay olmamasını doğrula."
+            )
+
+        # Diğer external servisler
+        ufw, iptables = _make_rules(port, proto, "allow_from", "<trusted_ip>")
+        return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["trusted_ip"]["note"])
+
+    # ── Internal ortam ─────────────────────────────────────────
     if environment == "internal":
-        if is_smb or is_msrpc:
-            return {
-                "ufw": f"ufw allow from <trusted_internal_subnet> to any port {port} proto {protocol}",
-                "iptables": f"iptables -A INPUT -p {protocol} -s <trusted_internal_subnet> --dport {port} -j ACCEPT",
-                "note": "Internal service detected. Restrict access to trusted internal subnets instead of exposing broadly."
-            }
+        if exposure in {"internal_only", "restricted_only"}:
+            ufw, iptables = _make_rules(port, proto, "allow_from", "<internal_subnet>")
+            return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["internal_subnet"]["note"])
 
-        if is_rdp or is_ssh:
-            return {
-                "ufw": f"ufw allow from <admin_subnet> to any port {port} proto {protocol}",
-                "iptables": f"iptables -A INPUT -p {protocol} -s <admin_subnet> --dport {port} -j ACCEPT",
-                "note": "Remote administration service should be limited to admin networks."
-            }
+        if exposure == "restricted_admin_only":
+            ufw, iptables = _make_rules(port, proto, "allow_from", "<admin_subnet>")
+            return FirewallRules(
+                ufw=ufw, iptables=iptables,
+                note="Uzak yönetim servisi. Yalnızca yönetim ağlarıyla sınırlı tut."
+            )
 
+        ufw, iptables = _make_rules(port, proto, "allow_from", "<trusted_ip>")
+        return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["trusted_ip"]["note"])
+
+    # ── Production ortam ───────────────────────────────────────
     if environment == "production":
-        if is_smb or is_rdp or is_msrpc or is_ssh:
-            return {
-                "ufw": f"ufw allow from <approved_source> to any port {port} proto {protocol}",
-                "iptables": f"iptables -A INPUT -p {protocol} -s <approved_source> --dport {port} -j ACCEPT",
-                "note": "Production asset detected. Apply least-privilege access and validate business impact before changes."
-            }
+        if exposure in {"internal_only", "restricted_admin_only", "restricted_only"}:
+            ufw, iptables = _make_rules(port, proto, "allow_from", "<approved_source>")
+            return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["approved_source"]["note"])
 
-    return {
-        "ufw": f"ufw allow from <trusted_ip> to any port {port} proto {protocol}",
-        "iptables": f"iptables -A INPUT -p {protocol} -s <trusted_ip> --dport {port} -j ACCEPT",
-        "note": "Restrict access to trusted sources and validate whether the service is required."
-    }
+        ufw, iptables = _make_rules(port, proto, "allow_from", "<approved_source>")
+        return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["approved_source"]["note"])
+
+    # ── Fallback ───────────────────────────────────────────────
+    ufw, iptables = _make_rules(port, proto, "allow_from", "<trusted_ip>")
+    return FirewallRules(ufw=ufw, iptables=iptables, note=_POLICY["trusted_ip"]["note"])

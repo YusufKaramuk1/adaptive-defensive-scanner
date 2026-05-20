@@ -1,0 +1,396 @@
+{
+  "meta": {
+    "tool": "Adaptive Defensive Scanner (ADS)",
+    "version": "2.0",
+    "generated": "2026-04-29T14:26:36.273348"
+  },
+  "context": {
+    "target": "192.168.1.0/30",
+    "environment": "internal",
+    "criticality": "medium"
+  },
+  "summary": {
+    "total": 14,
+    "high": 8,
+    "medium": 2,
+    "low": 4,
+    "overall_risk": "HIGH",
+    "overall_priority": "CRITICAL",
+    "critical_priority": 8,
+    "high_priority": 2
+  },
+  "findings": [
+    {
+      "port": 22,
+      "service": "ssh",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "remote_admin",
+      "expected_exposure": "restricted_admin_only",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "SSH — uzaktan yönetim için kullanılır; key tabanlı auth ve IP kısıtlaması zorunlu. | Kategori: remote_admin | Beklenen exposure: restricted_admin_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "SSH erişimini yalnızca gerekli IP'lerle kısıtla; parola ile girişi devre dışı bırakmayı değerlendir.",
+      "proper_fix": "SSH sertleştirme: key-based auth zorunlu yap, root login kapat, fail2ban veya rate limiting uygula, MFA ekle, idle timeout ayarla, protokol sürümünü SSHv2'ye kısıtla, merkezi loglama kur.",
+      "ufw_rule": "ufw allow from <admin_subnet> to any port 22 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <admin_subnet> --dport 22 -j ACCEPT",
+      "rule_note": "Uzak yönetim servisi. Yalnızca yönetim ağlarıyla sınırlı tut.",
+      "cves": []
+    },
+    {
+      "port": 445,
+      "service": "microsoft-ds",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "file_sharing",
+      "expected_exposure": "internal_only",
+      "base_score": 4,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "SMB — Windows dosya paylaşımı; EternalBlue gibi kritik açıklara tarihsel hedef. | Kategori: file_sharing | Beklenen exposure: internal_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2017-0144 (max CVSS: 9.8)",
+      "evidence": [
+        "Servis internal olarak sınıflandırılmış.",
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "SMB erişimini yalnızca güvenilir iç IP aralıklarıyla kısıtla; SMBv1'i derhal devre dışı bırak.",
+      "proper_fix": "SMB gerekli değilse kapat. Gerekiyorsa: VPN/segmentasyon arkasına al, SMBv2+ zorunlu kıl, erişim denetim listelerini uygula, tüm SMB trafiğini logla ve düzenli olarak gözden geçir.",
+      "ufw_rule": "ufw allow from <internal_subnet> to any port 445 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <internal_subnet> --dport 445 -j ACCEPT",
+      "rule_note": "İç ağ servisi. Yalnızca güvenilir iç subnet'e erişim izni ver.",
+      "cves": [
+        {
+          "cve_id": "CVE-2017-0144",
+          "description": "EternalBlue (port açık, versiyon bilinmiyor)",
+          "cvss_score": 9.8,
+          "url": "...",
+          "match_type": "service"
+        }
+      ]
+    },
+    {
+      "port": 3389,
+      "service": "ms-wbt-server",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "remote_admin",
+      "expected_exposure": "restricted_admin_only",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "RDP — Windows uzak masaüstü; internete açık olması kritik risk oluşturur. | Kategori: remote_admin | Beklenen exposure: restricted_admin_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2019-0708 (max CVSS: 9.8)",
+      "evidence": [
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "RDP'yi internete asla açık bırakma; yalnızca VPN üzerinden veya belirli yönetici IP'lerine izin ver.",
+      "proper_fix": "RDP için: VPN + bastion host mimarisi kur, MFA zorunlu yap, NLA (Network Level Authentication) etkinleştir, account lockout politikası uygula, RDP gateway kullan, tüm oturumları logla.",
+      "ufw_rule": "ufw allow from <admin_subnet> to any port 3389 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <admin_subnet> --dport 3389 -j ACCEPT",
+      "rule_note": "Uzak yönetim servisi. Yalnızca yönetim ağlarıyla sınırlı tut.",
+      "cves": [
+        {
+          "cve_id": "CVE-2019-0708",
+          "description": "BlueKeep (port açık, versiyon bilinmiyor)",
+          "cvss_score": 9.8,
+          "url": "...",
+          "match_type": "service"
+        }
+      ]
+    },
+    {
+      "port": 6379,
+      "service": "redis",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "database",
+      "expected_exposure": "should_not_be_exposed",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "Redis — varsayılan kurulumda auth yok; internete açıksa kritik RCE/veri sızıntısı riski. | Kategori: database | Beklenen exposure: should_not_be_exposed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2022-0543 (max CVSS: 10.0)",
+      "evidence": [
+        "Servis maruziyeti asla beklenmiyor.",
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "Redis'e dış erişimi hemen kapat; auth şifresini zorunlu kıl (requirepass).",
+      "proper_fix": "Redis sertleştirme: bind 127.0.0.1, requirepass + ACL kullan, TLS etkinleştir, tehlikeli komutları devre dışı bırak (FLUSHALL, CONFIG, DEBUG), ağ seviyesinde izole et.",
+      "ufw_rule": "ufw deny 6379/tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp --dport 6379 -j DROP",
+      "rule_note": "Bu servis hiçbir ortamda açık olmamalı. Derhal kapat ve nedenini araştır.",
+      "cves": [
+        {
+          "cve_id": "CVE-2022-0543",
+          "description": "Redis Lua sandbox escape (Debian özelinde).",
+          "cvss_score": 10.0,
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-0543",
+          "match_type": "product"
+        }
+      ]
+    },
+    {
+      "port": 22,
+      "service": "ssh",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "remote_admin",
+      "expected_exposure": "restricted_admin_only",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "SSH — uzaktan yönetim için kullanılır; key tabanlı auth ve IP kısıtlaması zorunlu. | Kategori: remote_admin | Beklenen exposure: restricted_admin_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "SSH erişimini yalnızca gerekli IP'lerle kısıtla; parola ile girişi devre dışı bırakmayı değerlendir.",
+      "proper_fix": "SSH sertleştirme: key-based auth zorunlu yap, root login kapat, fail2ban veya rate limiting uygula, MFA ekle, idle timeout ayarla, protokol sürümünü SSHv2'ye kısıtla, merkezi loglama kur.",
+      "ufw_rule": "ufw allow from <admin_subnet> to any port 22 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <admin_subnet> --dport 22 -j ACCEPT",
+      "rule_note": "Uzak yönetim servisi. Yalnızca yönetim ağlarıyla sınırlı tut.",
+      "cves": []
+    },
+    {
+      "port": 445,
+      "service": "microsoft-ds",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "file_sharing",
+      "expected_exposure": "internal_only",
+      "base_score": 4,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "SMB — Windows dosya paylaşımı; EternalBlue gibi kritik açıklara tarihsel hedef. | Kategori: file_sharing | Beklenen exposure: internal_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2017-0144 (max CVSS: 9.8)",
+      "evidence": [
+        "Servis internal olarak sınıflandırılmış.",
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "SMB erişimini yalnızca güvenilir iç IP aralıklarıyla kısıtla; SMBv1'i derhal devre dışı bırak.",
+      "proper_fix": "SMB gerekli değilse kapat. Gerekiyorsa: VPN/segmentasyon arkasına al, SMBv2+ zorunlu kıl, erişim denetim listelerini uygula, tüm SMB trafiğini logla ve düzenli olarak gözden geçir.",
+      "ufw_rule": "ufw allow from <internal_subnet> to any port 445 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <internal_subnet> --dport 445 -j ACCEPT",
+      "rule_note": "İç ağ servisi. Yalnızca güvenilir iç subnet'e erişim izni ver.",
+      "cves": [
+        {
+          "cve_id": "CVE-2017-0144",
+          "description": "EternalBlue (port açık, versiyon bilinmiyor)",
+          "cvss_score": 9.8,
+          "url": "...",
+          "match_type": "service"
+        }
+      ]
+    },
+    {
+      "port": 3389,
+      "service": "ms-wbt-server",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "remote_admin",
+      "expected_exposure": "restricted_admin_only",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "RDP — Windows uzak masaüstü; internete açık olması kritik risk oluşturur. | Kategori: remote_admin | Beklenen exposure: restricted_admin_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2019-0708 (max CVSS: 9.8)",
+      "evidence": [
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "RDP'yi internete asla açık bırakma; yalnızca VPN üzerinden veya belirli yönetici IP'lerine izin ver.",
+      "proper_fix": "RDP için: VPN + bastion host mimarisi kur, MFA zorunlu yap, NLA (Network Level Authentication) etkinleştir, account lockout politikası uygula, RDP gateway kullan, tüm oturumları logla.",
+      "ufw_rule": "ufw allow from <admin_subnet> to any port 3389 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <admin_subnet> --dport 3389 -j ACCEPT",
+      "rule_note": "Uzak yönetim servisi. Yalnızca yönetim ağlarıyla sınırlı tut.",
+      "cves": [
+        {
+          "cve_id": "CVE-2019-0708",
+          "description": "BlueKeep (port açık, versiyon bilinmiyor)",
+          "cvss_score": 9.8,
+          "url": "...",
+          "match_type": "service"
+        }
+      ]
+    },
+    {
+      "port": 6379,
+      "service": "redis",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "database",
+      "expected_exposure": "should_not_be_exposed",
+      "base_score": 5,
+      "final_score": 5,
+      "risk": "high",
+      "reason": "Redis — varsayılan kurulumda auth yok; internete açıksa kritik RCE/veri sızıntısı riski. | Kategori: database | Beklenen exposure: should_not_be_exposed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz. | Bilinen CVE'ler: CVE-2022-0543 (max CVSS: 10.0)",
+      "evidence": [
+        "Servis maruziyeti asla beklenmiyor.",
+        "1 kritik/yüksek CVE bulundu."
+      ],
+      "confidence": "low",
+      "priority": "critical",
+      "quick_fix": "Redis'e dış erişimi hemen kapat; auth şifresini zorunlu kıl (requirepass).",
+      "proper_fix": "Redis sertleştirme: bind 127.0.0.1, requirepass + ACL kullan, TLS etkinleştir, tehlikeli komutları devre dışı bırak (FLUSHALL, CONFIG, DEBUG), ağ seviyesinde izole et.",
+      "ufw_rule": "ufw deny 6379/tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp --dport 6379 -j DROP",
+      "rule_note": "Bu servis hiçbir ortamda açık olmamalı. Derhal kapat ve nedenini araştır.",
+      "cves": [
+        {
+          "cve_id": "CVE-2022-0543",
+          "description": "Redis Lua sandbox escape (Debian özelinde).",
+          "cvss_score": 10.0,
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-0543",
+          "match_type": "product"
+        }
+      ]
+    },
+    {
+      "port": 3306,
+      "service": "mysql",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "database",
+      "expected_exposure": "internal_only",
+      "base_score": 4,
+      "final_score": 4,
+      "risk": "medium",
+      "reason": "MySQL/MariaDB — veritabanı servisi; internete açık olması ciddi veri sızıntısı riski. | Kategori: database | Beklenen exposure: internal_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "Servis internal olarak sınıflandırılmış.",
+        "Veritabanı servisi; varsayılan portta çalışıyor olabilir."
+      ],
+      "confidence": "low",
+      "priority": "high",
+      "quick_fix": "Veritabanı portunu yalnızca uygulama sunucularına aç; genel erişimi derhal kapat.",
+      "proper_fix": "Veritabanı güvenliği: network seviyesinde firewall kısıtlaması, yalnızca uygulama kullanıcısına minimum yetki, şifreli bağlantı (SSL/TLS) zorunlu, audit logging etkin, düzenli yedek + şifreli depolama.",
+      "ufw_rule": "ufw allow from <internal_subnet> to any port 3306 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <internal_subnet> --dport 3306 -j ACCEPT",
+      "rule_note": "İç ağ servisi. Yalnızca güvenilir iç subnet'e erişim izni ver.",
+      "cves": []
+    },
+    {
+      "port": 3306,
+      "service": "mysql",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "database",
+      "expected_exposure": "internal_only",
+      "base_score": 4,
+      "final_score": 4,
+      "risk": "medium",
+      "reason": "MySQL/MariaDB — veritabanı servisi; internete açık olması ciddi veri sızıntısı riski. | Kategori: database | Beklenen exposure: internal_only | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "Servis internal olarak sınıflandırılmış.",
+        "Veritabanı servisi; varsayılan portta çalışıyor olabilir."
+      ],
+      "confidence": "low",
+      "priority": "high",
+      "quick_fix": "Veritabanı portunu yalnızca uygulama sunucularına aç; genel erişimi derhal kapat.",
+      "proper_fix": "Veritabanı güvenliği: network seviyesinde firewall kısıtlaması, yalnızca uygulama kullanıcısına minimum yetki, şifreli bağlantı (SSL/TLS) zorunlu, audit logging etkin, düzenli yedek + şifreli depolama.",
+      "ufw_rule": "ufw allow from <internal_subnet> to any port 3306 proto tcp",
+      "iptables_rule": "iptables -A INPUT -p tcp -s <internal_subnet> --dport 3306 -j ACCEPT",
+      "rule_note": "İç ağ servisi. Yalnızca güvenilir iç subnet'e erişim izni ver.",
+      "cves": []
+    },
+    {
+      "port": 80,
+      "service": "http",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "web",
+      "expected_exposure": "public_allowed",
+      "base_score": 2,
+      "final_score": 2,
+      "risk": "low",
+      "reason": "HTTP — şifrelenmemiş web trafiği taşır; HTTPS'e yönlendirme önerilir. | Kategori: web | Beklenen exposure: public_allowed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "HTTP/HTTPS servisi; güvenlik başlıkları ve TLS durumu ayrıca kontrol edilmeli."
+      ],
+      "confidence": "low",
+      "priority": "medium",
+      "quick_fix": "HTTP'yi HTTPS'e yönlendir (301 redirect); sunucu başlıklarında versiyon bilgisini gizle.",
+      "proper_fix": "Web sertleştirme: TLS 1.2+ zorunlu kıl, HSTS ekle, WAF (Web Application Firewall) kur, güvenli HTTP başlıkları uygula (CSP, X-Frame-Options, CORS), rate limiting ekle, düzenli DAST tara.",
+      "ufw_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "iptables_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "rule_note": "Düşük riskli servis. İzleme ve servis doğrulaması önerilir.",
+      "cves": []
+    },
+    {
+      "port": 443,
+      "service": "https",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "web",
+      "expected_exposure": "public_allowed",
+      "base_score": 2,
+      "final_score": 2,
+      "risk": "low",
+      "reason": "HTTPS — TLS ile şifrelenmiş web trafiği; standart web servisi. | Kategori: web | Beklenen exposure: public_allowed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "HTTP/HTTPS servisi; güvenlik başlıkları ve TLS durumu ayrıca kontrol edilmeli."
+      ],
+      "confidence": "low",
+      "priority": "medium",
+      "quick_fix": "TLS sertifikasının geçerliliğini ve sürümünü kontrol et (TLS 1.2+); zayıf cipher suite'leri kapat.",
+      "proper_fix": "TLS sertleştirme: TLS 1.3 önceliklendir, HSTS + preload ekle, certificate pinning değerlendir, WAF kur, güvenlik başlıklarını kontrol et, düzenli pentest yaptır.",
+      "ufw_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "iptables_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "rule_note": "Düşük riskli servis. İzleme ve servis doğrulaması önerilir.",
+      "cves": []
+    },
+    {
+      "port": 80,
+      "service": "http",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "web",
+      "expected_exposure": "public_allowed",
+      "base_score": 2,
+      "final_score": 2,
+      "risk": "low",
+      "reason": "HTTP — şifrelenmemiş web trafiği taşır; HTTPS'e yönlendirme önerilir. | Kategori: web | Beklenen exposure: public_allowed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "HTTP/HTTPS servisi; güvenlik başlıkları ve TLS durumu ayrıca kontrol edilmeli."
+      ],
+      "confidence": "low",
+      "priority": "medium",
+      "quick_fix": "HTTP'yi HTTPS'e yönlendir (301 redirect); sunucu başlıklarında versiyon bilgisini gizle.",
+      "proper_fix": "Web sertleştirme: TLS 1.2+ zorunlu kıl, HSTS ekle, WAF (Web Application Firewall) kur, güvenli HTTP başlıkları uygula (CSP, X-Frame-Options, CORS), rate limiting ekle, düzenli DAST tara.",
+      "ufw_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "iptables_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "rule_note": "Düşük riskli servis. İzleme ve servis doğrulaması önerilir.",
+      "cves": []
+    },
+    {
+      "port": 443,
+      "service": "https",
+      "protocol": "tcp",
+      "state": "open",
+      "category": "web",
+      "expected_exposure": "public_allowed",
+      "base_score": 2,
+      "final_score": 2,
+      "risk": "low",
+      "reason": "HTTPS — TLS ile şifrelenmiş web trafiği; standart web servisi. | Kategori: web | Beklenen exposure: public_allowed | Internal ortam genel erişimi azaltır; ancak lateral movement veya kötüye kullanım riskini ortadan kaldırmaz.",
+      "evidence": [
+        "HTTP/HTTPS servisi; güvenlik başlıkları ve TLS durumu ayrıca kontrol edilmeli."
+      ],
+      "confidence": "low",
+      "priority": "medium",
+      "quick_fix": "TLS sertifikasının geçerliliğini ve sürümünü kontrol et (TLS 1.2+); zayıf cipher suite'leri kapat.",
+      "proper_fix": "TLS sertleştirme: TLS 1.3 önceliklendir, HSTS + preload ekle, certificate pinning değerlendir, WAF kur, güvenlik başlıklarını kontrol et, düzenli pentest yaptır.",
+      "ufw_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "iptables_rule": "# Düşük risk — kural gerekmeyebilir; servis ihtiyacını doğrula",
+      "rule_note": "Düşük riskli servis. İzleme ve servis doğrulaması önerilir.",
+      "cves": []
+    }
+  ]
+}
