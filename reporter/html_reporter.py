@@ -1,5 +1,5 @@
 """
-ADS – HTML Reporter (reporter) v2.5
+ADS – HTML Reporter (reporter) v1.0.0
 Modern dark-theme security report.
 
 UI language: English
@@ -1725,7 +1725,7 @@ def generate_html_report(report: ScanReport) -> str:
 
 <footer class="footer">
     <div class="footer-brand">
-        🛡️ ADS v2.5 — Adaptive Defensive Scanner
+        🛡️ ADS v1.0.0 — Adaptive Defensive Scanner
     </div>
 
     <div>Generated at {_safe(timestamp)}</div>

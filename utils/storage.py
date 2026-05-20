@@ -2,7 +2,7 @@
 ADS – Storage Utilities (utils)
 Tarama geçmişini yönetir: en son taramayı saklama, liste alma, son iki taramayı bulma.
 
-v2.5 notları:
+v1.0.0 notes:
 - History içine path kaydederken POSIX formatı kullanılır: reports/file.json
 - Okurken Windows/Linux farkı normalize edilir.
 - Eski history kayıtlarında metadata yoksa, JSON raporun context alanından geriye dönük doldurulmaya çalışılır.

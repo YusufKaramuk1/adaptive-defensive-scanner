@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ADS – Main Entry Point
-Adaptive Defensive Scanner v2.5
+Adaptive Defensive Scanner v1.0.0
 
 Usage:
   python main.py --target 192.168.1.1 --environment external --criticality high
@@ -47,7 +47,7 @@ from utils.storage import save_latest_scan, get_previous_scan_path, list_history
 
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
-║       Adaptive Defensive Scanner  v2.5               ║
+║       Adaptive Defensive Scanner  v1.0.0             ║
 ║       "From technical findings to security actions"  ║
 ╚══════════════════════════════════════════════════════╝
 """
@@ -85,7 +85,7 @@ def _normalize_display_path(path_value: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Adaptive Defensive Scanner (ADS) v2.5",
+        description="Adaptive Defensive Scanner (ADS) v1.0.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

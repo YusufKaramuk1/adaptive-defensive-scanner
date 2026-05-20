@@ -1,5 +1,5 @@
 """
-ADS – Data Models (v2.5)
+ADS – Data Models (v1.0.0)
 
 Central data models used by the Adaptive Defensive Scanner.
 """

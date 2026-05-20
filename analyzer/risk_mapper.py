@@ -1,5 +1,5 @@
 """
-ADS – Risk Mapper v2.5
+ADS – Risk Mapper v1.0.0
 
 Combines normalized scan/import findings with contextual defensive risk analysis.
 

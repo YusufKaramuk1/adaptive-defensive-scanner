@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adaptive-defensive-scanner"
+version = "1.0.0"
+description = "A single-binary defensive interpretation engine that turns external scanner output (Nmap, httpx, Nuclei) into auditable priorities and concrete remediation actions."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Yusuf Karamuk", email = "yusufkaramuk9@gmail.com" }
+]
+keywords = [
+    "security",
+    "vulnerability-management",
+    "scanner",
+    "nmap",
+    "nuclei",
+    "httpx",
+    "defensive",
+    "blue-team",
+    "devsecops",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "python-nmap",
+    "packaging>=23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/YusufKaramuk1/adaptive-defensive-scanner"
+Repository = "https://github.com/YusufKaramuk1/adaptive-defensive-scanner"
+Changelog = "https://github.com/YusufKaramuk1/adaptive-defensive-scanner/blob/main/CHANGELOG.md"
+Issues = "https://github.com/YusufKaramuk1/adaptive-defensive-scanner/issues"
+
+[project.scripts]
+ads = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "models"]
+packages = [
+    "scanner",
+    "integrations",
+    "analyzer",
+    "knowledge_base",
+    "recommender",
+    "rule_generator",
+    "reporter",
+    "utils",
+]
