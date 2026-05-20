@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# Claude Code workspace artifacts
+.claude/
+
+# Generated scan artifacts (regenerated on every run)
+reports/*.json
+reports/*.html
