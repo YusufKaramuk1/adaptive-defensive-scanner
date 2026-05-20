@@ -136,13 +136,20 @@ def import_nmap_xml(xml_path: str) -> list[ScanFinding]:
     path = Path(xml_path)
 
     if not path.exists():
-        raise FileNotFoundError(f"Nmap XML dosyası bulunamadı: {xml_path}")
+        raise FileNotFoundError(f"Nmap XML file not found: {xml_path}")
+
+    if path.is_dir():
+        raise IsADirectoryError(f"Expected an Nmap XML file but got a directory: {xml_path}")
 
     try:
         tree = ET.parse(path)
         root = tree.getroot()
     except ET.ParseError as e:
-        raise ValueError(f"Geçersiz Nmap XML dosyası: {xml_path} ({e})")
+        raise ValueError(f"Invalid Nmap XML file: {xml_path} ({e})")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"Nmap XML file is not valid UTF-8 / ASCII: {xml_path} ({e})")
+    except PermissionError as e:
+        raise PermissionError(f"Permission denied reading Nmap XML file: {xml_path} ({e})")
 
     findings: list[ScanFinding] = []
 

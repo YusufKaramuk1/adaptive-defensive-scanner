@@ -574,10 +574,9 @@ def load_security_findings_from_source(args: argparse.Namespace) -> tuple[list, 
 def handle_security_import(args: argparse.Namespace, scan_mode: str, source_tool: str, source_file: str) -> None:
     try:
         raw_security_findings, target_label = load_security_findings_from_source(args)
-    except FileNotFoundError as e:
-        print(f"[ADS] Import error: {e}")
-        return
-    except ValueError as e:
+    except (OSError, ValueError) as e:
+        # OSError covers FileNotFoundError, PermissionError, IsADirectoryError, etc.
+        # ValueError covers parse/encoding failures raised from importers.
         print(f"[ADS] Import error: {e}")
         return
 
@@ -681,10 +680,9 @@ def main() -> None:
 
     try:
         raw_findings, target_label = load_findings_from_source(args, is_subnet)
-    except FileNotFoundError as e:
-        print(f"[ADS] Import error: {e}")
-        return
-    except ValueError as e:
+    except (OSError, ValueError) as e:
+        # OSError covers FileNotFoundError, PermissionError, IsADirectoryError, etc.
+        # ValueError covers parse/encoding failures raised from importers.
         print(f"[ADS] Import error: {e}")
         return
 

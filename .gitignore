@@ -4,6 +4,11 @@ __pycache__/
 .env
 .DS_Store
 
+# Python packaging artifacts
+*.egg-info/
+build/
+dist/
+
 # Claude Code workspace artifacts
 .claude/
 

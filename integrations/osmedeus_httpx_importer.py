@@ -252,19 +252,27 @@ def import_httpx_jsonl(jsonl_path: str) -> list[ScanFinding]:
     if not path.exists():
         raise FileNotFoundError(f"httpx JSONL file not found: {jsonl_path}")
 
+    if path.is_dir():
+        raise IsADirectoryError(f"Expected an httpx JSONL file but got a directory: {jsonl_path}")
+
     findings: list[ScanFinding] = []
 
-    with open(path, "r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f, 1):
-            data = _parse_json_line(line, line_no)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line_no, line in enumerate(f, 1):
+                data = _parse_json_line(line, line_no)
 
-            if data is None:
-                continue
+                if data is None:
+                    continue
 
-            finding = _httpx_record_to_finding(data)
+                finding = _httpx_record_to_finding(data)
 
-            if finding is not None:
-                findings.append(finding)
+                if finding is not None:
+                    findings.append(finding)
+    except UnicodeDecodeError as e:
+        raise ValueError(f"httpx JSONL file is not valid UTF-8: {jsonl_path} ({e})")
+    except PermissionError as e:
+        raise PermissionError(f"Permission denied reading httpx JSONL file: {jsonl_path} ({e})")
 
     return findings
 

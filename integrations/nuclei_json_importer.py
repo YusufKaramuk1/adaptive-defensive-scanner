@@ -251,15 +251,23 @@ def import_nuclei_json(path_value: str) -> list[SecurityFinding]:
     if not path.exists():
         raise FileNotFoundError(f"Nuclei JSON/JSONL file not found: {path_value}")
 
+    if path.is_dir():
+        raise IsADirectoryError(f"Expected a Nuclei JSON/JSONL file but got a directory: {path_value}")
+
     records: list[dict]
 
-    if path.suffix.lower() == ".jsonl":
-        records = _parse_jsonl_file(path)
-    else:
-        try:
-            records = _parse_json_file(path)
-        except json.JSONDecodeError:
+    try:
+        if path.suffix.lower() == ".jsonl":
             records = _parse_jsonl_file(path)
+        else:
+            try:
+                records = _parse_json_file(path)
+            except json.JSONDecodeError:
+                records = _parse_jsonl_file(path)
+    except UnicodeDecodeError as e:
+        raise ValueError(f"Nuclei file is not valid UTF-8: {path_value} ({e})")
+    except PermissionError as e:
+        raise PermissionError(f"Permission denied reading Nuclei file: {path_value} ({e})")
 
     findings = []
 
