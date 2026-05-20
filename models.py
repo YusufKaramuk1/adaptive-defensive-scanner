@@ -260,8 +260,10 @@ class ScanContext:
 @dataclass
 class ScanReport:
     context: ScanContext
-    findings: list
+    findings: list  # list[AnalyzedFinding]
+    security_findings: list = field(default_factory=list)  # list[AnalyzedSecurityFinding]
 
+    # ── Scan finding counts (risk-based) ─────────────────────────
     @property
     def high_count(self) -> int:
         return sum(1 for f in self.findings if f.risk == RiskLevel.HIGH)
@@ -274,6 +276,7 @@ class ScanReport:
     def low_count(self) -> int:
         return sum(1 for f in self.findings if f.risk == RiskLevel.LOW)
 
+    # ── Scan finding counts (priority-based) ─────────────────────
     @property
     def critical_priority_count(self) -> int:
         return sum(1 for f in self.findings if f.priority == PriorityLevel.CRITICAL)
@@ -282,36 +285,96 @@ class ScanReport:
     def high_priority_count(self) -> int:
         return sum(1 for f in self.findings if f.priority == PriorityLevel.HIGH)
 
+    # ── Security finding counts (risk-based; shares RiskLevel) ───
+    @property
+    def security_high_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.risk == RiskLevel.HIGH)
+
+    @property
+    def security_medium_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.risk == RiskLevel.MEDIUM)
+
+    @property
+    def security_low_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.risk == RiskLevel.LOW)
+
+    # ── Security finding counts (priority-based) ─────────────────
+    @property
+    def security_critical_priority_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.priority == PriorityLevel.CRITICAL)
+
+    @property
+    def security_high_priority_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.priority == PriorityLevel.HIGH)
+
+    # ── Security finding counts (raw severity, for display) ──────
+    @property
+    def security_critical_severity_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.severity == SecuritySeverity.CRITICAL)
+
+    @property
+    def security_high_severity_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.severity == SecuritySeverity.HIGH)
+
+    @property
+    def security_medium_severity_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.severity == SecuritySeverity.MEDIUM)
+
+    @property
+    def security_low_severity_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.severity == SecuritySeverity.LOW)
+
+    @property
+    def security_info_severity_count(self) -> int:
+        return sum(1 for f in self.security_findings if f.severity == SecuritySeverity.INFO)
+
+    # ── Overall (considers both lists) ───────────────────────────
     @property
     def overall_risk(self) -> str:
-        if self.high_count > 0:
+        if self.high_count > 0 or self.security_high_count > 0:
             return "HIGH"
-        if self.medium_count > 0:
+        if self.medium_count > 0 or self.security_medium_count > 0:
             return "MEDIUM"
         return "LOW"
 
     @property
     def overall_priority(self) -> str:
-        if self.critical_priority_count > 0:
+        if self.critical_priority_count > 0 or self.security_critical_priority_count > 0:
             return "CRITICAL"
-        if self.high_priority_count > 0:
+        if self.high_priority_count > 0 or self.security_high_priority_count > 0:
             return "HIGH"
-        if self.medium_count > 0:
+        if self.medium_count > 0 or self.security_medium_count > 0:
             return "MEDIUM"
         return "LOW"
 
+    # ── Sorting ──────────────────────────────────────────────────
     @property
     def top_risks(self) -> list:
+        """Top 5 scan findings only. Kept for backward compatibility."""
         priority_order = {
             PriorityLevel.CRITICAL: 0,
             PriorityLevel.HIGH: 1,
             PriorityLevel.MEDIUM: 2,
             PriorityLevel.LOW: 3,
         }
-
         return sorted(
             self.findings,
             key=lambda f: (priority_order.get(f.priority, 99), -f.final_score),
+        )[:5]
+
+    @property
+    def top_priority(self) -> list:
+        """Top 5 across both scan and security findings, merged and sorted by priority."""
+        priority_order = {
+            PriorityLevel.CRITICAL: 0,
+            PriorityLevel.HIGH: 1,
+            PriorityLevel.MEDIUM: 2,
+            PriorityLevel.LOW: 3,
+        }
+        merged = list(self.findings) + list(self.security_findings)
+        return sorted(
+            merged,
+            key=lambda f: (priority_order.get(f.priority, 99), -getattr(f, "final_score", 0)),
         )[:5]
 
     def to_dict(self) -> dict:
@@ -327,7 +390,21 @@ class ScanReport:
                 "critical_priority": self.critical_priority_count,
                 "high_priority": self.high_priority_count,
             },
+            "security_summary": {
+                "total": len(self.security_findings),
+                "critical_severity": self.security_critical_severity_count,
+                "high_severity": self.security_high_severity_count,
+                "medium_severity": self.security_medium_severity_count,
+                "low_severity": self.security_low_severity_count,
+                "info_severity": self.security_info_severity_count,
+                "high_risk": self.security_high_count,
+                "medium_risk": self.security_medium_count,
+                "low_risk": self.security_low_count,
+                "critical_priority": self.security_critical_priority_count,
+                "high_priority": self.security_high_priority_count,
+            },
             "findings": [f.to_dict() for f in self.findings],
+            "security_findings": [f.to_dict() for f in self.security_findings],
         }
 
 
