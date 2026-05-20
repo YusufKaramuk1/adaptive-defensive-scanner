@@ -1,0 +1,4 @@
+{"url":"https://example.com","host":"example.com","port":443,"scheme":"https","status-code":200,"title":"Example Domain","webserver":"nginx/1.24.0","tech":["Nginx"]}
+{"url":"http://admin.example.com:8080","host":"admin.example.com","port":8080,"scheme":"http","status-code":200,"title":"Admin Login","webserver":"Apache/2.4.49","tech":["Apache HTTP Server"]}
+{"url":"https://api.example.com","host":"api.example.com","port":443,"scheme":"https","status-code":401,"title":"Unauthorized","webserver":"cloudflare","tech":["Cloudflare"]}
+{"url":"https://dev.example.com","host":"dev.example.com","port":443,"scheme":"https","status-code":403,"title":"Forbidden","webserver":"Microsoft-IIS/10.0","tech":["IIS","ASP.NET"]}

@@ -1,16 +1,37 @@
 # Adaptive Defensive Scanner (ADS)
 
-Adaptive Defensive Scanner (ADS) is a defensive reasoning and action engine for security findings.
+**Turn scanner output into defensive action.**
 
-ADS is not designed to replace tools such as Nmap, Osmedeus, httpx, Nuclei, Tsunami, Amass, or Subfinder.
+ADS is a single-binary, deterministic engine that normalizes Nmap, httpx / Osmedeus, and Nuclei output, scores risk and priority with context, and produces one unified HTML / JSON report. No SaaS, no database — runs locally on your laptop.
 
-Instead, ADS is designed to sit above those tools and interpret their technical outputs from a defensive perspective.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Tests](https://github.com/YusufKaramuk1/adaptive-defensive-scanner/actions/workflows/tests.yml/badge.svg)](https://github.com/YusufKaramuk1/adaptive-defensive-scanner/actions/workflows/tests.yml)
 
 ```text
 Technical finding → Security meaning → Defensive action
 ```
 
-In practice, ADS takes scanner outputs, normalizes them, enriches them with context, calculates risk and priority, generates remediation guidance, suggests firewall rules, creates a unified report, and tracks changes over time.
+---
+
+## Quick Start
+
+```powershell
+pip install -e .
+ads --import-nuclei-json examples\sample_nuclei.jsonl --environment external --criticality high
+start reports\ads_report.html
+```
+
+That is the entire setup. You will get a dark-themed unified HTML report with
+a "Security Findings" section, a severity-tagged "Top Priority Findings" panel,
+and per-finding remediation guidance.
+
+See [`examples/`](examples/) for ready-to-run sample inputs covering all three
+import modes (Nmap XML, httpx / Osmedeus JSONL, Nuclei JSON / JSONL).
+
+> **Screenshot:** After running the Quick Start, open
+> `reports/ads_report.html` in a browser and add a screenshot to
+> `docs/screenshot.png` to display it here.
 
 ---
 

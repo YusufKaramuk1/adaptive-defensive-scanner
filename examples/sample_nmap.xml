@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sample Nmap XML output used by the ADS examples/ directory.
+  Generated with a command equivalent to:
+    nmap -sV -oX sample_nmap.xml 192.0.2.10
+  The host 192.0.2.10 is from RFC 5737 TEST-NET-1 and is non-routable.
+-->
+<nmaprun scanner="nmap" args="nmap -sV -oX sample_nmap.xml 192.0.2.10">
+  <host>
+    <status state="up" reason="echo-reply"/>
+    <address addr="192.0.2.10" addrtype="ipv4"/>
+    <hostnames>
+      <hostname name="web-prod-01.example.com" type="PTR"/>
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH" version="8.2p1"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open" reason="syn-ack"/>
+        <service name="http" product="Apache httpd" version="2.4.49"/>
+      </port>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="Apache httpd" version="2.4.49"/>
+      </port>
+      <port protocol="tcp" portid="445">
+        <state state="open" reason="syn-ack"/>
+        <service name="microsoft-ds" product="Samba smbd" version="4.6.2"/>
+      </port>
+      <port protocol="tcp" portid="3306">
+        <state state="open" reason="syn-ack"/>
+        <service name="mysql" product="MySQL" version="5.7.31"/>
+      </port>
+      <port protocol="tcp" portid="3389">
+        <state state="closed" reason="reset"/>
+        <service name="ms-wbt-server"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>
